@@ -6,42 +6,30 @@
 
 @layer base {
   :root {
-    --background: 220 20% 8%;
-    --foreground: 210 40% 98%;
-
-    --card: 220 18% 12%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 220 18% 12%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 174 72% 50%;
-    --primary-foreground: 220 20% 8%;
-
-    --secondary: 220 16% 18%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 220 14% 16%;
-    --muted-foreground: 215 20% 55%;
-
-    --accent: 142 70% 50%;
-    --accent-foreground: 220 20% 8%;
-
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 186 94% 38%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 20% 93%;
+    --secondary-foreground: 222 47% 20%;
+    --muted: 210 20% 93%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 186 94% 38%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 220 14% 20%;
-    --input: 220 14% 20%;
-    --ring: 174 72% 50%;
-
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 88%;
+    --input: 214 32% 88%;
+    --ring: 186 94% 38%;
     --radius: 0.75rem;
-
-    /* Custom tokens */
     --warning: 38 92% 50%;
-    --warning-foreground: 220 20% 8%;
-    
+    --warning-foreground: 0 0% 100%;
     --success: 142 70% 50%;
-    --success-foreground: 220 20% 8%;
+    --success-foreground: 0 0% 100%;
 
     --chart-protein: 174 72% 50%;
     --chart-carbs: 38 92% 50%;
@@ -50,11 +38,45 @@
 
     --gradient-primary: linear-gradient(135deg, hsl(174 72% 50%) 0%, hsl(190 80% 45%) 100%);
     --gradient-accent: linear-gradient(135deg, hsl(142 70% 50%) 0%, hsl(160 70% 45%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(220 18% 14%) 0%, hsl(313, 18%, 10%) 100%);
-    --gradient-hero: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)),url("/background.jpg");
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(210 40% 96%) 100%);
+    --gradient-hero: linear-gradient(rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.55)),url("/background.jpg");
 
     --glow-primary: 0 0 20px hsl(174 72% 50% / 0.3);
     --glow-accent: 0 0 20px hsl(142 70% 50% / 0.3);
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222.2 84% 4.9%;
+    --sidebar-primary: 186 94% 42%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 40% 96%;
+    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-ring: 186 94% 42%;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 186 94% 42%;
+    --primary-foreground: 222 47% 7%;
+    --secondary: 222 47% 14%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 222 47% 14%;
+    --muted-foreground: 215 20% 55%;
+    --accent: 186 94% 42%;
+    --accent-foreground: 222 47% 7%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 222 47% 18%;
+    --input: 222 47% 18%;
+    --ring: 186 94% 42%;
+
+    --gradient-card: linear-gradient(180deg, hsl(220 18% 14%) 0%, hsl(313, 18%, 10%) 100%);
+    --gradient-hero: linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)),url("/background.jpg");
 
     --sidebar-background: 220 18% 10%;
     --sidebar-foreground: 210 40% 98%;
@@ -198,5 +220,16 @@
 @keyframes pulse0112 {
   0%, 100% { transform: scale(0); opacity: 0.5; }
   50% { transform: scale(1); opacity: 1; }
+}
+
+/* Remove number input spinners - all browsers */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
 }
 

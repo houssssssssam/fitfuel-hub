@@ -1,0 +1,22 @@
+module.exports = [
+  { id: "first_meal", title: "First Bite", description: "Log your first food item", icon: "🍳" },
+  { id: "streak_3", title: "On a Roll", description: "Hit a 3-day tracking streak", icon: "🔥" },
+  { id: "streak_7", title: "Week Warrior", description: "Hit a 7-day tracking streak", icon: "📅" },
+  { id: "streak_30", title: "Monthly Master", description: "Hit a 30-day tracking streak", icon: "🏆" },
+  { id: "protein_goal", title: "Protein King", description: "Hit your daily protein goal", icon: "🥩" },
+  { id: "calorie_goal", title: "Calorie Counter", description: "Hit your daily calorie goal exactly", icon: "⚖️" },
+  { id: "water_goal", title: "Hydration Hero", description: "Drink 2500ml of water in a day", icon: "💧" },
+  { id: "workout_1", title: "First Sweat", description: "Complete your first workout", icon: "💦" },
+  { id: "workout_10", title: "Dedicated", description: "Complete 10 workouts", icon: "💪" },
+  { id: "workout_50", title: "Iron Will", description: "Complete 50 workouts", icon: "🛡️" },
+  { id: "weight_logged", title: "Scale Tracker", description: "Log your weight 7 distinct times", icon: "⚖️" },
+  { id: "meals_explored", title: "Food Explorer", description: "Log 50 distinct food items overall", icon: "🥗" },
+  { id: "early_bird", title: "Early Bird", description: "Log a meal before 9:00 AM", icon: "🌅" },
+  { id: "night_owl", title: "Night Owl", description: "Log a meal after 8:00 PM", icon: "🦉" },
+  { id: "macro_perfect", title: "Macro Master", description: "Hit all 4 macro goals in a single day", icon: "🎯" },
+  { id: "weight_loss_5", title: "5kg Target", description: "Change your weight by 5kg from the start", icon: "📉" },
+  { id: "weight_loss_10", title: "10kg Target", description: "Change your weight by 10kg from the start", icon: "📉" },
+  { id: "meal_suggestion", title: "Recipe Explorer", description: "Generate AI meal suggestions 10 times", icon: "🤖" },
+  { id: "profile_complete", title: "All Set", description: "Complete your profile onboarding", icon: "✅" },
+  { id: "first_plan", title: "Planner", description: "Create your first custom workout plan", icon: "📝" }
+];

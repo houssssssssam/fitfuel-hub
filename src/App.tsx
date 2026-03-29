@@ -8,6 +8,7 @@ import AppLayout from "./components/layout/AppLayout";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
 import Workouts from "./pages/Workouts";
 import WorkoutPlans from "./pages/WorkoutPlans";
@@ -17,8 +18,15 @@ import CalorieCalculator from "./pages/CalorieCalculator";
 import NutritionAdvice from "./pages/NutritionAdvice";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import Onboarding from "./pages/Onboarding";
+import BodyWeight from "./pages/BodyWeight";
+import Achievements from "./pages/Achievements";
+import WeeklyPlan from "./pages/WeeklyPlan";
+import ProgressPhotos from "./pages/ProgressPhotos";
+import Settings from "./pages/Settings";
 import { useEffect, useState } from "react";
 import Loader from "./components/Loader";
+import { NutritionProvider } from "./context/NutritionContext";
 
 const queryClient = new QueryClient();
 
@@ -45,9 +53,11 @@ const App = () => {
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
 
             <Route element={<ProtectedRoute />}>
-              <Route element={<AppLayout />}>
+              <Route path="/onboarding" element={<Onboarding />} />
+              <Route element={<NutritionProvider><AppLayout /></NutritionProvider>}>
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/workouts" element={<Workouts />} />
                 <Route path="/workout-plans" element={<WorkoutPlans />} />
@@ -56,6 +66,11 @@ const App = () => {
                 <Route path="/calorie-calculator" element={<CalorieCalculator />} />
                 <Route path="/nutrition-advice" element={<NutritionAdvice />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/body-weight" element={<BodyWeight />} />
+                <Route path="/achievements" element={<Achievements />} />
+                <Route path="/weekly-plan" element={<WeeklyPlan />} />
+                <Route path="/progress-photos" element={<ProgressPhotos />} />
+                <Route path="/settings" element={<Settings />} />
               </Route>
             </Route>
 

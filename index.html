@@ -1,11 +1,32 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      (function() {
+        try {
+          const theme = localStorage.getItem('theme') || 'dark';
+          const root = document.documentElement;
+          
+          if (theme === 'system') {
+            const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (systemDark) root.classList.add('dark');
+          } else if (theme === 'dark') {
+            root.classList.add('dark');
+          }
+          // light = no class needed
+        } catch (e) {}
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- TODO: Set the document title to the name of your application -->
-    <title>FitFuel</title>
-    <meta name="description" content="Lovable Generated Project" />
+    <title>FitFuel Hub</title>
+    <meta name="description" content="Your complete fitness companion" />
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/favicon.png">
+    <link rel="manifest" href="/manifest.json">
     <meta name="author" content="Lovable" />
     <link rel="icon" type="image/png" href="/favicon.png" />
 
