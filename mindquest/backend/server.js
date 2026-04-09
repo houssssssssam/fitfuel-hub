@@ -3,7 +3,6 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const mongoSanitize = require("express-mongo-sanitize");
 const xss = require("xss-clean");
 const hpp = require("hpp");
 const cookieParser = require("cookie-parser");
@@ -66,8 +65,6 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
 
 // ── DATA SANITIZATION ─────────────────────────────────────────────────────────
-// Prevent NoSQL injection: strips keys starting with $ or containing .
-app.use(mongoSanitize());
 // Prevent XSS: sanitize HTML entities in request body
 app.use(xss());
 // Prevent HTTP parameter pollution (e.g. ?sort=asc&sort=desc)
