@@ -47,7 +47,8 @@ const navGroups: NavGroup[] = [
     title: "INSIGHTS",
     items: [
       { label: "Achievements", path: "/achievements", icon: Trophy },
-      { label: "Nutrition Advice", path: "/nutrition-advice", icon: Brain }
+      { label: "Nutrition Advice", path: "/nutrition-advice", icon: Brain },
+      { label: "Fitness Advice", path: "/fitness-advice", icon: Dumbbell }
     ]
   },
   {
@@ -71,8 +72,13 @@ export default function Sidebar({ isCollapsed, setCollapsed, mobileOpen, setMobi
   const navigate = useNavigate();
   const { t } = useTranslation();
 
-  const handleLogout = () => {
-    localStorage.removeItem("user"); // only remove auth
+  const handleLogout = async () => {
+    try {
+      await import("@/lib/api").then(({ api }) => api.post("/api/auth/logout"));
+    } catch {
+      // proceed even if the call fails
+    }
+    localStorage.removeItem("user");
     navigate("/login");
   };
 
@@ -136,18 +142,7 @@ export default function Sidebar({ isCollapsed, setCollapsed, mobileOpen, setMobi
         ))}
 
         {/* Logout (Special Red Layering at bottom flex offset) */}
-        <div className="px-3 mt-auto pt-4 border-t border-white/5 space-y-3 pb-2">
-          {!isCollapsed && (
-            <div className="flex flex-col gap-2">
-              <div 
-                className="flex items-center justify-between px-3 py-2 bg-white/5 hover:bg-white/10 transition-colors rounded-lg border border-white/10 cursor-pointer" 
-                onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))}
-              >
-                <span className="text-xs text-slate-400 font-medium tracking-wide">Press ? for shortcuts</span>
-                <kbd className="bg-slate-800 text-slate-300 text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-700 shadow-sm">?</kbd>
-              </div>
-            </div>
-          )}
+        <div className="px-3 mt-auto pt-4 border-t border-white/5 pb-2">
           <button
             onClick={handleLogout}
             title={isCollapsed ? "Logout" : undefined}
@@ -159,25 +154,32 @@ export default function Sidebar({ isCollapsed, setCollapsed, mobileOpen, setMobi
         </div>
       </div>
 
-      {/* Desktop Collapse Toggle */}
-      <div className="hidden md:flex h-10 border-t border-white/5 items-center px-4 hover:bg-white/5 cursor-pointer transition-colors" onClick={() => setCollapsed(!isCollapsed)}>
-        <div className="flex w-full items-center justify-center text-slate-500 hover:text-slate-300">
-          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </div>
-      </div>
     </div>
   );
 
   return (
     <>
       {/* Desktop Fixed Scope */}
-      <aside 
+      <aside
         className={cn(
           "hidden md:block fixed left-0 top-0 bottom-0 z-40 transition-all duration-300 ease-in-out",
           isCollapsed ? "w-16" : "w-60"
         )}
       >
         {navContent}
+
+        {/* Floating collapse tab */}
+        <button
+          onClick={() => setCollapsed(!isCollapsed)}
+          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="absolute -right-3 top-1/2 -translate-y-1/2 z-50 flex h-14 w-3 flex-col items-center justify-center rounded-r-md bg-primary/80 hover:bg-primary hover:w-4 transition-all duration-200 shadow-lg shadow-primary/30 group"
+        >
+          <div className="flex flex-col items-center gap-[3px]">
+            <span className="block h-[3px] w-1.5 rounded-full bg-white/80 group-hover:bg-white" />
+            <span className="block h-[3px] w-1.5 rounded-full bg-white/80 group-hover:bg-white" />
+            <span className="block h-[3px] w-1.5 rounded-full bg-white/80 group-hover:bg-white" />
+          </div>
+        </button>
       </aside>
 
       {/* Mobile Modal Blocking Scope */}

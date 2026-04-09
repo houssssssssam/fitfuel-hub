@@ -1,5 +1,25 @@
 const mongoose = require("mongoose");
 
+const ServingSizeSchema = new mongoose.Schema(
+  {
+    amount: Number,
+    unit: String,
+  },
+  { _id: false }
+);
+
+const SavedFoodSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  unit: { type: String, default: "g" },
+  calories: { type: Number, required: true },
+  protein: { type: Number, default: 0 },
+  carbs: { type: Number, default: 0 },
+  fats: { type: Number, default: 0 },
+  servingSize: { type: ServingSizeSchema, required: false },
+  externalId: String,
+  addedAt: { type: Date, default: Date.now },
+});
+
 const UserSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -37,34 +57,38 @@ const UserSchema = new mongoose.Schema(
     resetPasswordToken: String,
     resetPasswordExpires: Date,
 
-    nutritionHistory: [{
-      date: { type: String, required: true },
-      calories: Number,
-      protein: Number,
-      carbs: Number,
-      fats: Number,
-      foods: [{
-        name: String,
-        quantity: Number,
-        unit: String,
+    nutritionHistory: [
+      {
+        date: { type: String, required: true },
         calories: Number,
         protein: Number,
         carbs: Number,
         fats: Number,
-        mealType: String,
-      }],
-      water: Number,
-    }],
+        foods: [
+          {
+            name: String,
+            quantity: Number,
+            unit: String,
+            calories: Number,
+            protein: Number,
+            carbs: Number,
+            fats: Number,
+            mealType: String,
+          },
+        ],
+        water: Number,
+      },
+    ],
 
     weightLogs: [
       {
         weight: Number,
-        date: String, // "YYYY-MM-DD"
+        date: String,
         note: String,
         _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
       },
     ],
-    
+
     achievements: [
       {
         id: String,
@@ -75,54 +99,92 @@ const UserSchema = new mongoose.Schema(
     progressPhotos: [
       {
         url: String,
-        date: String,
+        thumbnailUrl: String,
+        date: Date,
         note: String,
         category: { type: String, enum: ["front", "side", "back"] },
-        _id: { type: mongoose.Schema.Types.ObjectId, auto: true }
-      }
+        _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
+      },
     ],
 
     foods: [
-  {
-    name: String,
-    quantity: Number,
-    unit: String,
-    calories: Number,
-    protein: Number,
-    carbs: Number,
-    fats: Number,
-    mealType: String,
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-],
-selectedWorkoutPlan: {
-  type: String,
-  default: null,
-},
-
-workouts: [
-  {
-    name: String,
-    date: { type: Date, default: Date.now },
-    duration: Number,
-    totalVolume: Number,
-    exercises: [
       {
         name: String,
-        sets: [
+        quantity: Number,
+        unit: String,
+        calories: Number,
+        protein: Number,
+        carbs: Number,
+        fats: Number,
+        mealType: String,
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
+    recentFoods: [SavedFoodSchema],
+
+    favoriteFoods: [SavedFoodSchema],
+
+    selectedWorkoutPlan: {
+      type: String,
+      default: null,
+    },
+
+    // Meal Templates
+    mealTemplates: [
+      {
+        name: { type: String, required: true },
+        mealType: { type: String, enum: ["Breakfast", "Lunch", "Dinner", "Snacks"], default: "Breakfast" },
+        foods: [
           {
-            reps: Number,
-            weight: Number,
+            name: String,
+            quantity: Number,
+            unit: String,
+            calories: Number,
+            protein: Number,
+            carbs: Number,
+            fats: Number,
+          },
+        ],
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+
+    // Meal Planning
+    activeMealPlan: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MealPlan",
+      default: null,
+    },
+    mealPlanHistory: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "MealPlan",
+      },
+    ],
+
+    workouts: [
+      {
+        name: String,
+        date: { type: Date, default: Date.now },
+        duration: Number,
+        totalVolume: Number,
+        exercises: [
+          {
+            name: String,
+            sets: [
+              {
+                reps: Number,
+                weight: Number,
+              },
+            ],
           },
         ],
       },
     ],
-  },
-],
-
   },
   { timestamps: true }
 );

@@ -1,3 +1,7 @@
+# SSL certificates (local dev only — generated with mkcert)
+*.pem
+*.key
+
 node_modules
 backend/node_modules
 mindquest/backend/node_modules

@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import Loader from "@/components/Loader";
+import { getStoredUser, refreshSession } from "@/lib/auth";
 import { Mail, Lock, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -89,11 +91,40 @@ const NumberCounter = ({ end, suffix, label }: { end: number, suffix: string, la
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const Login = () => {
+  const [checkingSession, setCheckingSession] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const restoreSession = async () => {
+      const storedUser = getStoredUser();
+      if (storedUser?.token) {
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+
+      const refreshedUser = await refreshSession();
+      if (!isMounted) return;
+
+      if (refreshedUser?.token) {
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+
+      setCheckingSession(false);
+    };
+
+    void restoreSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,6 +146,10 @@ const Login = () => {
       setLoading(false);
     }
   };
+
+  if (checkingSession) {
+    return <Loader />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-[#0a0f1e] overflow-hidden selection:bg-cyan-500/30">

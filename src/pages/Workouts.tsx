@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { api } from "@/lib/api";
-import { Plus, Calendar, Dumbbell, Trash2, Save, Clock, Pencil } from "lucide-react";
+import { Plus, Calendar, Dumbbell, Trash2, Save, Clock, Pencil, TrendingUp, Trophy, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -42,6 +43,215 @@ interface Workout {
   exercises: Exercise[];
   totalVolume: number;
 }
+
+// ── Analytics Helpers ─────────────────────────────────────────────────────────
+
+const detectMuscle = (name: string): string => {
+  const n = name.toLowerCase();
+  if (/bench|press|fly|flye|pec|push-up|pushup|chest/.test(n)) return "Chest";
+  if (/row|pull-up|pullup|lat|deadlift|pull down|pulldown|back/.test(n)) return "Back";
+  if (/shoulder|ohp|overhead|lateral raise|military|delt|face pull/.test(n)) return "Shoulders";
+  if (/curl|bicep|hammer/.test(n)) return "Biceps";
+  if (/tricep|pushdown|skull|extension|dip/.test(n)) return "Triceps";
+  if (/squat|leg|lunge|calf|hamstring|quad|rdl|hip thrust|glute/.test(n)) return "Legs";
+  if (/ab|crunch|plank|sit-up|situp|core|oblique/.test(n)) return "Core";
+  return "Other";
+};
+
+const WorkoutAnalytics = ({ workouts }: { workouts: Workout[] }) => {
+  const analytics = useMemo(() => {
+    if (workouts.length === 0) return null;
+
+    const totalSessions = workouts.length;
+    const totalVolume = workouts.reduce((s, w) => s + (w.totalVolume || 0), 0);
+    const avgVolume = Math.round(totalVolume / totalSessions);
+
+    // Volume over time
+    const volumeData = [...workouts]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map((w) => ({
+        date: new Date(w.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        volume: w.totalVolume || 0,
+        name: w.name,
+      }));
+
+    // Muscle distribution
+    const muscles: Record<string, number> = {};
+    for (const w of workouts) {
+      for (const ex of w.exercises) {
+        const m = detectMuscle(ex.name);
+        muscles[m] = (muscles[m] || 0) + 1;
+      }
+    }
+
+    // Personal records
+    const prMap: Record<string, { exercise: string; weight: number; reps: number; date: string }> = {};
+    for (const w of workouts) {
+      for (const ex of w.exercises) {
+        const key = ex.name.toLowerCase().trim();
+        if (!key) continue;
+        for (const set of ex.sets) {
+          if (set.weight > 0 && (!prMap[key] || set.weight > prMap[key].weight)) {
+            prMap[key] = { exercise: ex.name, weight: set.weight, reps: set.reps, date: w.date };
+          }
+        }
+      }
+    }
+    const prs = Object.values(prMap).sort((a, b) => b.weight - a.weight).slice(0, 6);
+
+    // Top exercise by frequency
+    const exFreq: Record<string, number> = {};
+    for (const w of workouts) {
+      for (const ex of w.exercises) {
+        const key = ex.name.toLowerCase().trim();
+        exFreq[key] = (exFreq[key] || 0) + 1;
+      }
+    }
+    const topExercise = Object.entries(exFreq).sort(([, a], [, b]) => b - a)[0];
+
+    return { totalSessions, avgVolume, volumeData, muscles, prs, topExercise };
+  }, [workouts]);
+
+  if (!analytics) return null;
+
+  const muscleColors: Record<string, string> = {
+    Chest: "#06b6d4", Back: "#22c55e", Shoulders: "#f59e0b", Legs: "#ef4444",
+    Biceps: "#8b5cf6", Triceps: "#ec4899", Core: "#14b8a6", Other: "#64748b",
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="stat-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-8 w-8 rounded-lg bg-primary/15 flex items-center justify-center">
+              <Dumbbell className="h-4 w-4 text-primary" />
+            </div>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Sessions</span>
+          </div>
+          <p className="text-2xl font-bold text-foreground">{analytics.totalSessions}</p>
+        </div>
+
+        <div className="stat-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-8 w-8 rounded-lg bg-orange-500/15 flex items-center justify-center">
+              <TrendingUp className="h-4 w-4 text-orange-400" />
+            </div>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Avg Volume</span>
+          </div>
+          <p className="text-2xl font-bold text-foreground">{analytics.avgVolume.toLocaleString()} <span className="text-sm text-muted-foreground">lbs</span></p>
+        </div>
+
+        <div className="stat-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-8 w-8 rounded-lg bg-yellow-500/15 flex items-center justify-center">
+              <Trophy className="h-4 w-4 text-yellow-400" />
+            </div>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Top Lift</span>
+          </div>
+          <p className="text-sm font-bold text-foreground truncate capitalize">{analytics.topExercise?.[0] || "-"}</p>
+          <p className="text-xs text-muted-foreground">{analytics.topExercise ? `${analytics.topExercise[1]}× logged` : ""}</p>
+        </div>
+
+        <div className="stat-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-8 w-8 rounded-lg bg-green-500/15 flex items-center justify-center">
+              <Activity className="h-4 w-4 text-green-400" />
+            </div>
+            <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Muscles</span>
+          </div>
+          <p className="text-2xl font-bold text-foreground">{Object.keys(analytics.muscles).length} <span className="text-sm text-muted-foreground">groups</span></p>
+        </div>
+      </div>
+
+      {/* Volume Chart + PRs */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* Volume Chart */}
+        <div className="lg:col-span-3 stat-card">
+          <h3 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            Volume Progression
+          </h3>
+          {analytics.volumeData.length > 1 ? (
+            <div className="h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={analytics.volumeData}>
+                  <defs>
+                    <linearGradient id="colorVol" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
+                  <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(val: number) => `${(val / 1000).toFixed(0)}k`} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "8px" }}
+                    formatter={(value: number) => [`${value.toLocaleString()} lbs`, "Volume"]}
+                  />
+                  <Area type="monotone" dataKey="volume" stroke="#06b6d4" fillOpacity={1} fill="url(#colorVol)" strokeWidth={2.5} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-[220px] flex items-center justify-center text-muted-foreground border-2 border-dashed border-border rounded-xl text-sm">
+              Log more workouts to see progression trends
+            </div>
+          )}
+
+          {/* Muscle Tags */}
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border/50">
+            {Object.entries(analytics.muscles).sort(([, a], [, b]) => b - a).map(([m, count]) => (
+              <span
+                key={m}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-xs font-medium text-foreground"
+              >
+                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: muscleColors[m] || muscleColors.Other }} />
+                {m}: {count}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Personal Records */}
+        <div className="lg:col-span-2 stat-card">
+          <h3 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-yellow-400" />
+            Personal Records
+          </h3>
+          {analytics.prs.length > 0 ? (
+            <div className="space-y-2">
+              {analytics.prs.map((pr, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-secondary/50 border border-yellow-500/10 hover:border-yellow-500/30 transition-colors"
+                >
+                  <div className="h-8 w-8 rounded-lg bg-yellow-500/15 flex items-center justify-center shrink-0">
+                    <span className="text-sm">🏆</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground capitalize truncate">{pr.exercise}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(pr.date).toLocaleDateString()}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-yellow-400">{pr.weight} lbs</p>
+                    <p className="text-xs text-muted-foreground">{pr.reps} reps</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <Trophy className="h-8 w-8 text-slate-600 mb-2" />
+              <p className="text-sm text-muted-foreground">Start logging weighted exercises to track PRs</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const Workouts = () => {
   const { t } = useTranslation();
@@ -166,7 +376,7 @@ const Workouts = () => {
     <div className="space-y-6 md:space-y-8 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold font-display text-foreground">{t("workoutsTitle")}</h1>
+          <h1 data-page-title-anchor className="text-2xl md:text-3xl font-bold font-display text-foreground">{t("workoutsTitle")}</h1>
           <p className="text-sm md:text-base text-muted-foreground mt-1">{t("workoutsSubtitle")}</p>
         </div>
 
@@ -292,6 +502,9 @@ const Workouts = () => {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* ── Analytics Section ── */}
+      <WorkoutAnalytics workouts={workouts} />
 
       <div className="space-y-4">
         <h2 className="text-lg md:text-xl font-semibold font-display text-foreground">Workout History</h2>

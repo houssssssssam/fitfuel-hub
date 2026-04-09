@@ -246,7 +246,7 @@ const NutritionAdvice = () => {
     return (
       <div className="space-y-6 animate-fade-in">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold font-display text-foreground">{t("nutritionAdviceTitle")}</h1>
+          <h1 data-page-title-anchor className="text-2xl md:text-3xl font-bold font-display text-foreground">{t("nutritionAdviceTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">We couldn&apos;t generate your personalized analysis right now.</p>
         </div>
 
@@ -281,7 +281,7 @@ const NutritionAdvice = () => {
     <div className="space-y-6 animate-fade-in pb-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold font-display text-foreground">{t("nutritionAdviceTitle")}</h1>
+          <h1 data-page-title-anchor className="text-2xl md:text-3xl font-bold font-display text-foreground">{t("nutritionAdviceTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             AI-powered analysis built from your real nutrition data, {realData.userName}
           </p>

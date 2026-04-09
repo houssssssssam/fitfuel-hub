@@ -85,7 +85,7 @@ export default function Achievements() {
     <div className="space-y-8 animate-fade-in max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-display font-bold text-foreground">{t("achievementsTitle")}</h2>
+          <h2 data-page-title-anchor className="text-3xl font-display font-bold text-foreground">{t("achievementsTitle")}</h2>
           <p className="text-muted-foreground mt-1">{t("achievementsSubtitle")}</p>
         </div>
         <div className="flex gap-2 bg-secondary p-1 rounded-lg">

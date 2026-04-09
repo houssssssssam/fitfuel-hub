@@ -16,6 +16,7 @@ import FoodTracking from "./pages/FoodTracking";
 import MealSuggestions from "./pages/MealSuggestions";
 import CalorieCalculator from "./pages/CalorieCalculator";
 import NutritionAdvice from "./pages/NutritionAdvice";
+import FitnessAdvice from "./pages/FitnessAdvice";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import Onboarding from "./pages/Onboarding";
@@ -65,6 +66,7 @@ const App = () => {
                 <Route path="/meal-suggestions" element={<MealSuggestions />} />
                 <Route path="/calorie-calculator" element={<CalorieCalculator />} />
                 <Route path="/nutrition-advice" element={<NutritionAdvice />} />
+                <Route path="/fitness-advice" element={<FitnessAdvice />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/body-weight" element={<BodyWeight />} />
                 <Route path="/achievements" element={<Achievements />} />

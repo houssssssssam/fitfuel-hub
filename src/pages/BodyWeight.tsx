@@ -96,7 +96,7 @@ export default function BodyWeight() {
     <div className="space-y-8 animate-fade-in max-w-5xl mx-auto">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-display font-bold text-foreground">{t("bodyWeightTitle")}</h2>
+          <h2 data-page-title-anchor className="text-3xl font-display font-bold text-foreground">{t("bodyWeightTitle")}</h2>
           <p className="text-muted-foreground mt-1">Monitor your body composition over time.</p>
         </div>
       </div>

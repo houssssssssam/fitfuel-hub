@@ -457,7 +457,7 @@ const Dashboard = () => {
   return (
     <div className="space-y-6 md:space-y-8 animate-fade-in pb-8">
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold font-display text-foreground">{t("dashboardTitle")}</h1>
+        <h1 data-page-title-anchor className="text-2xl md:text-3xl font-bold font-display text-foreground">{t("dashboardTitle")}</h1>
         <p className="text-sm md:text-base text-muted-foreground mt-1">{t("dailyFitnessOverview")}</p>
       </div>
 

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 type Photo = {
   _id: string;
   url: string;
+  thumbnailUrl?: string;
   date: string;
   note: string;
   category: "front" | "side" | "back";
@@ -116,6 +117,7 @@ export default function ProgressPhotos() {
 
   // Use base URL for local fetching if necessary, assuming proxy handles /uploads
   const getImageUrl = (url: string) => `http://localhost:5000${url}`;
+  const getGalleryImageUrl = (photo: Photo) => getImageUrl(photo.thumbnailUrl || photo.url);
 
   if (isLoading) {
     return <div className="flex justify-center items-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -125,7 +127,7 @@ export default function ProgressPhotos() {
     <div className="space-y-8 animate-fade-in max-w-6xl mx-auto pb-12 relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-display font-bold text-foreground flex items-center gap-3">
+          <h2 data-page-title-anchor className="text-3xl font-display font-bold text-foreground flex items-center gap-3">
             <Camera className="h-8 w-8 text-primary" />
             Visual Progress
           </h2>
@@ -307,7 +309,7 @@ export default function ProgressPhotos() {
                         onClick={() => compareMode ? handleCompareToggle(photo) : setLightboxPhoto(photo)}
                       >
                         <img 
-                          src={getImageUrl(photo.url)} 
+                          src={getGalleryImageUrl(photo)} 
                           alt={photo.note}
                           className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
                           loading="lazy"

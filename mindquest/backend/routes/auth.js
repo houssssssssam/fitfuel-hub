@@ -3,9 +3,32 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const User = require("../models/User");
+const { protect } = require("../middleware/auth");
 
 const router = express.Router();
+
+/**
+ * Password strength validation
+ * Requires: 8+ chars, at least 1 uppercase, 1 lowercase, 1 number
+ */
+const isStrongPassword = (pw) =>
+  typeof pw === "string" &&
+  pw.length >= 8 &&
+  /[A-Z]/.test(pw) &&
+  /[a-z]/.test(pw) &&
+  /[0-9]/.test(pw);
+
+const PASSWORD_REQUIREMENTS =
+  "Password must be at least 8 characters with an uppercase letter, a lowercase letter, and a number.";
 const verificationCodes = new Map();
+const REFRESH_TOKEN_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
+const getRefreshTokenCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict",
+  maxAge: REFRESH_TOKEN_COOKIE_MAX_AGE,
+  path: "/",
+});
 
 setInterval(() => {
   const now = Date.now();
@@ -44,6 +67,10 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Missing fields" });
     }
 
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({ message: PASSWORD_REQUIREMENTS });
+    }
+
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
@@ -60,11 +87,14 @@ router.post("/register", async (req, res) => {
     await user.save();
     verificationCodes.delete(verifiedKey);
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const accessToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d' });
+
+    res.cookie("refreshToken", refreshToken, getRefreshTokenCookieOptions());
 
     res.status(201).json({
       message: "User registered successfully",
-      token,
+      token: accessToken,
       user: {
         id: user._id,
         name: user.name,
@@ -261,11 +291,14 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const accessToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+    const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d' });
+
+    res.cookie("refreshToken", refreshToken, getRefreshTokenCookieOptions());
 
     res.json({
       message: "Login successful",
-      token,
+      token: accessToken,
       user: {
         id: user._id,
         name: user.name,
@@ -334,6 +367,10 @@ router.post("/reset-password", async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired reset code" });
     }
 
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({ message: PASSWORD_REQUIREMENTS });
+    }
+
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
@@ -346,12 +383,17 @@ router.post("/reset-password", async (req, res) => {
   }
 });
 
-router.post("/change-password", async (req, res) => {
+router.post("/change-password", protect, async (req, res) => {
   try {
-    const { userId, currentPassword, newPassword } = req.body;
-    
-    if (!userId || !currentPassword || !newPassword) {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.userId; // from JWT — not from body
+
+    if (!currentPassword || !newPassword) {
       return res.status(400).json({ message: "Missing fields" });
+    }
+
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({ message: PASSWORD_REQUIREMENTS });
     }
 
     const user = await User.findById(userId);
@@ -374,5 +416,62 @@ router.post("/change-password", async (req, res) => {
   }
 });
 
-module.exports = router;
+/**
+ * REFRESH TOKEN
+ * POST /api/auth/refresh
+ */
+router.post("/refresh", async (req, res) => {
+  try {
+    const { refreshToken } = req.cookies;
 
+    if (!refreshToken) {
+      return res.status(401).json({ message: "No refresh token provided" });
+    }
+
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+
+    const user = await User.findById(decoded.id).select("-password");
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    const newAccessToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+    const newRefreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d' });
+
+    res.cookie("refreshToken", newRefreshToken, getRefreshTokenCookieOptions());
+
+    res.json({
+      token: newAccessToken,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error("Refresh token error:", error);
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    });
+    return res.status(401).json({ message: "Invalid or expired refresh token" });
+  }
+});
+
+/**
+ * LOGOUT
+ * POST /api/auth/logout
+ */
+router.post("/logout", (req, res) => {
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+  });
+  res.json({ message: "Logged out successfully" });
+});
+
+module.exports = router;

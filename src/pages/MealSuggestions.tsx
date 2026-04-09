@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Flame, Beef, RefreshCw, Clock, ImageOff, X, ChefHat, Users, BarChart3 } from "lucide-react";
+import { Plus, Flame, Beef, RefreshCw, Clock, ImageOff, X, ChefHat, Users, BarChart3, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -420,8 +420,12 @@ const MealSuggestions = () => {
 
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold font-display text-foreground">{t("mealSuggestionsTitle")}</h1>
-          <p className="text-sm md:text-base text-muted-foreground mt-1">{t("mealSuggestionsSubtitle")}</p>
+          <h1 data-page-title-anchor className="text-2xl md:text-3xl font-bold font-display text-foreground">{t("mealSuggestionsTitle")}</h1>
+          <p className="text-sm md:text-base text-muted-foreground mt-1 flex items-center gap-1">
+            {t("mealSuggestionsSubtitlePart1")}
+            <Sparkles className="w-4 h-4 inline shrink-0" />
+            {t("mealSuggestionsSubtitlePart2")}
+          </p>
         </div>
         <Button variant="outline" size="sm" className="gap-2" onClick={() => void fetchMeals(activeTab)} disabled={loading[activeTab]}>
           <RefreshCw className={`h-4 w-4 ${loading[activeTab] ? "animate-spin" : ""}`} />

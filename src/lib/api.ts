@@ -8,6 +8,7 @@ import axios from "axios";
  */
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "",
+  withCredentials: true, // send httpOnly refresh token cookie on every request
 });
 
 api.interceptors.request.use((config) => {
@@ -23,12 +24,43 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("user");
-      window.location.href = "/login";
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Attempt silent token refresh on 401, but not for the refresh endpoint itself
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes("/api/auth/refresh")
+    ) {
+      originalRequest._retry = true;
+
+      try {
+        const { data } = await axios.post(
+          `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/auth/refresh`,
+          {},
+          { withCredentials: true }
+        );
+
+        // Update stored user with the new access token
+        const userStr = localStorage.getItem("user");
+        const user = userStr ? JSON.parse(userStr) : {};
+        localStorage.setItem(
+          "user",
+          JSON.stringify({ ...user, ...data.user, token: data.token })
+        );
+
+        // Retry original request with the new token
+        originalRequest.headers.Authorization = `Bearer ${data.token}`;
+        return api(originalRequest);
+      } catch {
+        // Refresh failed — clear session and send to login
+        localStorage.removeItem("user");
+        window.location.href = "/login";
+        return Promise.reject(error);
+      }
     }
+
     return Promise.reject(error);
   }
 );
-

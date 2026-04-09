@@ -94,7 +94,7 @@ async function fetchAndStoreFoods(searchTerm, dataTypes) {
     "whole wheat bread", "white bread", "whole grain bread",
     "sourdough bread", "rye bread",
     "tortilla wrap", "pita bread", "english muffin", "brown rice",
-    "white rice", "jasmine rice", "basmati rice", "corn tortilla",
+    "white rice", "jasmine rice", "basmati rice", "corn tortilla", "bastilla", "tajine", 
     // Fruits
     "apple", "banana", "orange", "mango", "pineapple", "strawberry",
     "blueberry", "grape", "watermelon", "avocado", "peach", "pear",

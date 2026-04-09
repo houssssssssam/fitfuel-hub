@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 import { useTheme } from "@/hooks/useTheme";
 import { Switch } from "@/components/ui/switch";
-import { Palette, Globe, Bell, Lock, Database, Accessibility, Info, Monitor, Moon, Sun, MonitorSmartphone, Dumbbell } from "lucide-react";
+import { Palette, Globe, Lock, Database, Info, Monitor, Moon, Sun, MonitorSmartphone, Dumbbell } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
@@ -11,10 +11,8 @@ import { useNavigate } from "react-router-dom";
 const categories = [
   { id: "appearance", label: "appearance", icon: Palette },
   { id: "language", label: "languageRegion", icon: Globe },
-  { id: "notifications", label: "notifications", icon: Bell },
   { id: "privacy", label: "privacySecurity", icon: Lock },
   { id: "data", label: "dataStorage", icon: Database },
-  { id: "accessibility", label: "accessibility", icon: Accessibility },
   { id: "about", label: "about", icon: Info },
 ];
 
@@ -73,7 +71,6 @@ export default function Settings() {
     try {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
       await api.post("/api/auth/change-password", {
-        userId: user.id,
         currentPassword,
         newPassword
       });
@@ -184,22 +181,6 @@ export default function Settings() {
     </div>
   );
 
-  const renderNotifications = () => (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <SectionHeader title={t('notifications')} description="Manage your alerts and reminders." />
-      <div className="bg-primary/10 text-primary p-4 rounded-lg flex gap-3 text-sm">
-        <MonitorSmartphone className="h-5 w-5 shrink-0" />
-        <p>Push notifications coming soon. Email notifications available in Pro.</p>
-      </div>
-      <div className="space-y-2 mt-4">
-        <SettingsToggle label="Daily calorie reminder" description="Remind me to log my meals" value={true} onChange={() => toast('Preference saved')} />
-        <SettingsToggle label="Water intake reminder" description="Remind me to drink water" value={false} onChange={() => toast('Preference saved')} />
-        <SettingsToggle label="Achievement alerts" description="Notify when I unlock a badge" value={true} onChange={() => toast('Preference saved')} />
-        <SettingsToggle label="Weekly summary" description="Send weekly progress report" value={true} onChange={() => toast('Preference saved')} />
-      </div>
-    </div>
-  );
-
   const renderPrivacy = () => (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <SectionHeader title={t('privacySecurity')} description="Update your password and manage account security." />
@@ -261,16 +242,6 @@ export default function Settings() {
     </div>
   );
 
-  const renderAccessibility = () => (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <SectionHeader title={t('accessibility')} description="Tailor the app experience to your needs." />
-      <div className="space-y-2">
-        <SettingsToggle label="Reduce motion" description="Disable non-essential animations across the app" value={false} onChange={() => toast('Preference saved')} />
-        <SettingsToggle label="High contrast" description="Increase text contrast ratios enforcing stricter black/white lines" value={false} onChange={() => toast('Preference saved')} />
-      </div>
-    </div>
-  );
-
   const renderAbout = () => (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <SectionHeader title={t('about')} description="Information about FitFuel Hub." />
@@ -326,10 +297,8 @@ export default function Settings() {
         <div className="max-w-2xl">
           {activeSection === "appearance" && renderAppearance()}
           {activeSection === "language" && renderLanguage()}
-          {activeSection === "notifications" && renderNotifications()}
           {activeSection === "privacy" && renderPrivacy()}
           {activeSection === "data" && renderData()}
-          {activeSection === "accessibility" && renderAccessibility()}
           {activeSection === "about" && renderAbout()}
         </div>
       </div>
