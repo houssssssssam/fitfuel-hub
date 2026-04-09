@@ -6,10 +6,15 @@ import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 
 // HTTPS certs generated with: mkcert localhost 127.0.0.1 <YOUR_IP> ::1
-const httpsConfig = {
-  cert: fs.readFileSync(path.resolve(__dirname, "localhost+3.pem")),
-  key: fs.readFileSync(path.resolve(__dirname, "localhost+3-key.pem")),
-};
+// Only loaded locally — Vercel builds in production where these files don't exist
+const certPath = path.resolve(__dirname, "localhost+3.pem");
+const keyPath = path.resolve(__dirname, "localhost+3-key.pem");
+const httpsConfig =
+  process.env.NODE_ENV !== "production" &&
+  fs.existsSync(certPath) &&
+  fs.existsSync(keyPath)
+    ? { cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) }
+    : undefined;
 
 export default defineConfig(({ mode }) => ({
   server: {
