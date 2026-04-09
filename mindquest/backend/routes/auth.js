@@ -1,7 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
+const SibApiV3Sdk = require("@getbrevo/brevo");
 const User = require("../models/User");
 const { protect } = require("../middleware/auth");
 
@@ -43,21 +43,19 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
+
+async function sendEmail(to, subject, htmlContent) {
+  const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+  apiInstance.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
+
+  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+  sendSmtpEmail.subject = subject;
+  sendSmtpEmail.htmlContent = htmlContent;
+  sendSmtpEmail.sender = { name: "FitFuel Hub", email: process.env.EMAIL_USER };
+  sendSmtpEmail.to = [{ email: to }];
+
+  await apiInstance.sendTransacEmail(sendSmtpEmail);
+}
 
 /**
  * REGISTER
@@ -152,11 +150,7 @@ router.post("/send-verification", async (req, res) => {
 
     verificationCodes.delete(`verified_${normalizedEmail}`);
 
-    const mailOptions = {
-      from: `"FitFuel Hub" <${process.env.EMAIL_USER}>`,
-      to: normalizedEmail,
-      subject: "Your FitFuel Hub Verification Code",
-      html: `
+    const verificationHtml = `
         <!DOCTYPE html>
         <html>
         <head>
@@ -209,11 +203,10 @@ router.post("/send-verification", async (req, res) => {
           </table>
         </body>
         </html>
-      `,
-    };
+      `;
 
     try {
-      await transporter.sendMail(mailOptions);
+      await sendEmail(normalizedEmail, "Your FitFuel Hub Verification Code", verificationHtml);
     } catch (emailErr) {
       verificationCodes.delete(normalizedEmail);
       console.error("Email send failed:", emailErr.message);
@@ -339,11 +332,7 @@ router.post("/forgot-password", async (req, res) => {
     user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
     await user.save();
 
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "Reset your FitFuel Hub password",
-      html: `
+    const resetHtml = `
         <div style="background-color: #0f172a; padding: 40px; font-family: sans-serif; color: #f8fafc; border-radius: 12px; max-width: 500px; margin: 0 auto;">
           <h2 style="color: #06b6d4; margin-top: 0;">FitFuel Hub Password Reset</h2>
           <p>You requested a password reset. Your 6-digit recovery code is:</p>
@@ -352,13 +341,10 @@ router.post("/forgot-password", async (req, res) => {
           </div>
           <p>This code will expire in exactly 1 hour. If you did not request this, please ignore this email.</p>
         </div>
-      `
-    };
+      `;
 
-    transporter.sendMail(mailOptions, (error) => {
-      if (error) {
-        console.error("Email send failed:", error);
-      }
+    sendEmail(email, "Reset your FitFuel Hub password", resetHtml).catch((error) => {
+      console.error("Email send failed:", error.message);
     });
 
     res.json({ message: "Reset code sent to your email" });
