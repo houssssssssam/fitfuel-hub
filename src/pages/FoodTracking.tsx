@@ -1731,7 +1731,7 @@ const FoodTracking = () => {
           <Tabs defaultValue="favorites">
             <div className="flex items-center justify-between mb-4">
               <TabsList>
-                <TabsTrigger value="favorites" className="gap-1.5">
+                <TabsTrigger value="favorites" className="gap-1.5" onClick={() => setLibraryExpanded(true)}>
                   <Star className="h-3.5 w-3.5" />
                   Favorites
                   {favoriteFoods.length > 0 && (
@@ -1740,7 +1740,7 @@ const FoodTracking = () => {
                     </span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="templates" className="gap-1.5">
+                <TabsTrigger value="templates" className="gap-1.5" onClick={() => setLibraryExpanded(true)}>
                   <BookTemplate className="h-3.5 w-3.5" />
                   Meals
                   {mealTemplates.length > 0 && (
@@ -1750,16 +1750,36 @@ const FoodTracking = () => {
                   )}
                 </TabsTrigger>
               </TabsList>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-xs"
-                onClick={() => setShowCreateTemplateDialog(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                New Meal
-              </Button>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`gap-1.5 text-xs transition-all duration-300 ${libraryExpanded ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+                  onClick={() => setShowCreateTemplateDialog(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New Meal
+                </Button>
+                <button
+                  type="button"
+                  aria-expanded={libraryExpanded}
+                  onClick={() => setLibraryExpanded((prev) => !prev)}
+                  className={`rounded-full border p-1.5 transition-all duration-300 ${
+                    libraryExpanded
+                      ? "border-primary/30 bg-primary/10 text-primary shadow-[0_0_16px_rgba(34,211,238,0.12)]"
+                      : "border-border bg-secondary/70 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 transition-transform duration-500 ease-out ${libraryExpanded ? "rotate-180" : "rotate-0"}`}
+                  />
+                </button>
+              </div>
             </div>
+
+            <div className={`grid transition-[grid-template-rows,opacity] duration-500 ease-out motion-reduce:transition-none ${libraryExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-70"}`}>
+            <div className="overflow-hidden">
 
             <TabsContent value="favorites" className="mt-0">
               {favoriteFoods.length === 0 ? (
@@ -1808,6 +1828,8 @@ const FoodTracking = () => {
                 </div>
               )}
             </TabsContent>
+            </div>{/* end overflow-hidden */}
+            </div>{/* end grid collapse wrapper */}
           </Tabs>
         </div>
 

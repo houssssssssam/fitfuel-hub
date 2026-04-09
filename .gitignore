@@ -2,15 +2,39 @@
 *.pem
 *.key
 
-node_modules
-backend/node_modules
-mindquest/backend/node_modules
+# Dependencies
+node_modules/
+backend/node_modules/
+mindquest/backend/node_modules/
+
+# Environment files (never commit secrets)
 .env
+.env.*
+.env.local
+.env.production
+.env.development
 backend/.env
 mindquest/backend/.env
-dist
-mindquest/backend/uploads
+
+# Build output
+dist/
+build/
+
+# Uploads — keep folder structure, ignore user files
+mindquest/backend/uploads/*
+!mindquest/backend/uploads/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local dev artifacts
 .git-backups/
 .vscode/
+.claude/
 fix.js
 fix2.cjs

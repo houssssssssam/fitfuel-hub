@@ -22,13 +22,16 @@ const PASSWORD_REQUIREMENTS =
   "Password must be at least 8 characters with an uppercase letter, a lowercase letter, and a number.";
 const verificationCodes = new Map();
 const REFRESH_TOKEN_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
-const getRefreshTokenCookieOptions = () => ({
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict",
-  maxAge: REFRESH_TOKEN_COOKIE_MAX_AGE,
-  path: "/",
-});
+const getRefreshTokenCookieOptions = () => {
+  const isProduction = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProduction,              // HTTPS only in production
+    sameSite: isProduction ? "none" : "lax", // "none" required for cross-origin (Vercel → Render)
+    maxAge: REFRESH_TOKEN_COOKIE_MAX_AGE,
+    path: "/",
+  };
+};
 
 setInterval(() => {
   const now = Date.now();
@@ -450,12 +453,7 @@ router.post("/refresh", async (req, res) => {
     });
   } catch (error) {
     console.error("Refresh token error:", error);
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-    });
+    res.clearCookie("refreshToken", getRefreshTokenCookieOptions());
     return res.status(401).json({ message: "Invalid or expired refresh token" });
   }
 });
@@ -465,12 +463,7 @@ router.post("/refresh", async (req, res) => {
  * POST /api/auth/logout
  */
 router.post("/logout", (req, res) => {
-  res.clearCookie("refreshToken", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
-  });
+  res.clearCookie("refreshToken", getRefreshTokenCookieOptions());
   res.json({ message: "Logged out successfully" });
 });
 

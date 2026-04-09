@@ -3,77 +3,86 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const mongoSanitize = require("express-mongo-sanitize");
+const xss = require("xss-clean");
+const hpp = require("hpp");
 const cookieParser = require("cookie-parser");
+const path = require("path");
 require("dotenv").config();
 
 const authRoutes = require("./routes/auth");
 const foodsRoutes = require("./routes/foods");
 const mealsRoutes = require("./routes/meals");
-const app = express();
-const path = require("path");
 
-// ── Security Headers ──────────────────────────────────────────────────────────
+const app = express();
+
+// ── TRUST PROXY (required for Render — real IP for rate limiting) ─────────────
+app.set("trust proxy", 1);
+
+// ── SECURITY HEADERS (Helmet) ─────────────────────────────────────────────────
 app.use(
   helmet({
-    crossOriginEmbedderPolicy: false, // allow external images (Pexels, Unsplash)
-    crossOriginResourcePolicy: { policy: "cross-origin" }, // allow frontend to load uploads
-    contentSecurityPolicy: false, // CSP handled by the frontend / hosting layer
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: false,
   })
 );
 
-// ── CORS — restrict to allowed origins ────────────────────────────────────────
+// ── CORS ──────────────────────────────────────────────────────────────────────
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
   : [
       "http://localhost:8080",
       "http://localhost:5173",
       "http://127.0.0.1:8080",
-      "https://localhost:8080",   // HTTPS for local dev (mkcert)
+      "https://localhost:8080",
       "https://localhost:5173",
     ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, etc.)
       if (!origin) return callback(null, true);
-      // Allow listed origins
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Allow local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x) for dev/mobile testing
-      if (/^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+      // Allow local network IPs for dev/mobile testing
+      if (
+        /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(
+          origin
+        )
+      ) {
         return callback(null, true);
       }
-      callback(new Error("Not allowed by CORS"));
+      callback(new Error(`CORS blocked: ${origin}`));
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-// ── Body size limit ───────────────────────────────────────────────────────────
+// ── BODY PARSING ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
 
-// ── Static uploads ────────────────────────────────────────────────────────────
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// ── DATA SANITIZATION ─────────────────────────────────────────────────────────
+// Prevent NoSQL injection: strips keys starting with $ or containing .
+app.use(mongoSanitize());
+// Prevent XSS: sanitize HTML entities in request body
+app.use(xss());
+// Prevent HTTP parameter pollution (e.g. ?sort=asc&sort=desc)
+app.use(hpp());
 
-// ── Rate Limiting ─────────────────────────────────────────────────────────────
+// ── RATE LIMITING ─────────────────────────────────────────────────────────────
+// Auth endpoints — strict
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true, // only count failures
   message: { message: "Too many attempts. Please try again later." },
 });
-
-const apiLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 120,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: "Too many requests. Please slow down." },
-});
-
-// Apply strict rate limiting to auth endpoints
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
 app.use("/api/auth/send-verification", authLimiter);
@@ -82,18 +91,39 @@ app.use("/api/auth/reset-password", authLimiter);
 app.use("/api/auth/change-password", authLimiter);
 app.use("/api/auth/refresh", authLimiter);
 
-// General API rate limit
+// AI endpoints — expensive, tighter cap per minute
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "AI rate limit reached. Please wait a moment." },
+});
+app.use("/api/chat", aiLimiter);
+app.use("/api/tip", aiLimiter);
+app.use("/api/workout-generator", aiLimiter);
+app.use("/api/nutrition-advice", aiLimiter);
+app.use("/api/fitness-advice", aiLimiter);
+
+// Global API limiter
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests. Please slow down." },
+});
 app.use("/api/", apiLimiter);
 
-// ── Auth middleware ───────────────────────────────────────────────────────────
+// ── STATIC UPLOADS ────────────────────────────────────────────────────────────
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// ── AUTH MIDDLEWARE ───────────────────────────────────────────────────────────
 const { protect } = require("./middleware/auth");
 const { authorizeOwner } = require("./middleware/authorize");
 
-// ── Routes ────────────────────────────────────────────────────────────────────
-// Public auth routes
+// ── ROUTES ────────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
-
-// Protected + authorized routes (user can only access own data)
 app.use("/api/profile", protect, authorizeOwner, require("./routes/profile"));
 app.use("/api/foods", protect, foodsRoutes);
 app.use("/api/meals", protect, authorizeOwner, mealsRoutes);
@@ -107,16 +137,54 @@ app.use("/api/fitness-advice", protect, authorizeOwner, require("./routes/fitnes
 app.use("/api/workout-generator", protect, authorizeOwner, require("./routes/workout-generator"));
 app.use("/api/meal-plans", protect, require("./routes/mealPlans"));
 
-// ── MongoDB ───────────────────────────────────────────────────────────────────
-mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/mindquest")
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log(err));
-
 app.get("/api/test", (req, res) => {
   res.json({ message: "Backend reached successfully" });
 });
 
+// ── MONGODB ───────────────────────────────────────────────────────────────────
+mongoose
+  .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/mindquest", {
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  })
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => {
+    console.error("MongoDB connection error:", err.message);
+    process.exit(1); // crash fast — supervisor/Render will restart
+  });
+
+// ── GLOBAL ERROR HANDLER ──────────────────────────────────────────────────────
+// Must be last, after all routes
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  // CORS violation
+  if (err.message?.startsWith("CORS blocked")) {
+    return res.status(403).json({ error: "CORS policy violation" });
+  }
+  // Multer file size
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(400).json({ error: "File too large. Maximum size is 10MB." });
+  }
+  // Multer file type
+  if (err.message?.includes("Only images allowed") || err.message?.includes("Invalid file")) {
+    return res.status(400).json({ error: err.message });
+  }
+  // JWT errors
+  if (err.name === "JsonWebTokenError") {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+  if (err.name === "TokenExpiredError") {
+    return res.status(401).json({ error: "Token expired" });
+  }
+  // Generic — never leak stack traces in production
+  const statusCode = err.statusCode || 500;
+  const message =
+    process.env.NODE_ENV === "production" ? "Something went wrong" : err.message;
+  console.error("Unhandled error:", err);
+  res.status(statusCode).json({ error: message });
+});
+
+// ── START ─────────────────────────────────────────────────────────────────────
 const port = Number(process.env.PORT) || 5000;
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);

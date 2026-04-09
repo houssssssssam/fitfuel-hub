@@ -11,15 +11,25 @@ const PHOTOS_DIR = path.join(__dirname, "../uploads/photos");
 const THUMBNAILS_DIR = path.join(PHOTOS_DIR, "thumbnails");
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_UPLOAD_BYTES },
+  limits: {
+    fileSize: MAX_UPLOAD_BYTES,
+    files: 1,
+  },
   fileFilter: (req, file, cb) => {
-    if (!file.mimetype?.startsWith("image/")) {
-      cb(new Error("Only images allowed"), false);
-      return;
+    // Check MIME type
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      return cb(new Error("Invalid file type. Only JPEG, PNG, and WebP are allowed."), false);
     }
-
+    // Check extension as a second layer of defence
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      return cb(new Error("Invalid file extension."), false);
+    }
     cb(null, true);
   },
 });
@@ -102,7 +112,12 @@ const getUploadErrorPayload = (error) => {
     };
   }
 
-  if (typeof error?.message === "string" && error.message === "Only images allowed") {
+  if (
+    typeof error?.message === "string" &&
+    (error.message.includes("Invalid file type") ||
+      error.message.includes("Invalid file extension") ||
+      error.message === "Only images allowed")
+  ) {
     return {
       status: 400,
       message: error.message,

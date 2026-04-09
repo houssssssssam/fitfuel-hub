@@ -9,6 +9,7 @@ import axios from "axios";
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "",
   withCredentials: true, // send httpOnly refresh token cookie on every request
+  timeout: 15000, // 15 s — fail fast rather than hang forever
 });
 
 api.interceptors.request.use((config) => {
