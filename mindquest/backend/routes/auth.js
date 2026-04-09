@@ -1,7 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const Brevo = require("@getbrevo/brevo");
+const { BrevoClient } = require("@getbrevo/brevo");
 const User = require("../models/User");
 const { protect } = require("../middleware/auth");
 
@@ -45,19 +45,14 @@ setInterval(() => {
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function sendEmail(to, subject, htmlContent) {
-  const defaultClient = Brevo.ApiClient.instance;
-  const apiKey = defaultClient.authentications["api-key"];
-  apiKey.apiKey = process.env.BREVO_API_KEY;
+  const client = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
 
-  const apiInstance = new Brevo.TransactionalEmailsApi();
-  const sendSmtpEmail = new Brevo.SendSmtpEmail();
-
-  sendSmtpEmail.subject = subject;
-  sendSmtpEmail.htmlContent = htmlContent;
-  sendSmtpEmail.sender = { name: "FitFuel Hub", email: process.env.EMAIL_USER };
-  sendSmtpEmail.to = [{ email: to }];
-
-  await apiInstance.sendTransacEmail(sendSmtpEmail);
+  await client.transactionalEmails.sendTransacEmail({
+    subject,
+    htmlContent,
+    sender: { name: "FitFuel Hub", email: process.env.EMAIL_USER },
+    to: [{ email: to }],
+  });
 }
 
 /**
