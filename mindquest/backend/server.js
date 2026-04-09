@@ -3,7 +3,6 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const xss = require("xss-clean");
 const hpp = require("hpp");
 const cookieParser = require("cookie-parser");
 const path = require("path");
@@ -65,8 +64,6 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
 
 // ── DATA SANITIZATION ─────────────────────────────────────────────────────────
-// Prevent XSS: sanitize HTML entities in request body
-app.use(xss());
 // Prevent HTTP parameter pollution (e.g. ?sort=asc&sort=desc)
 app.use(hpp());
 
