@@ -125,7 +125,15 @@ const Register = () => {
 
     if (!formData.name.trim()) nextErrors.name = "Full name is required";
     if (!isEmailValid) nextErrors.email = "Valid email is required";
-    if (formData.password.length < 6) nextErrors.password = "Password must be at least 6 characters";
+    if (
+      formData.password.length < 8 ||
+      !/[A-Z]/.test(formData.password) ||
+      !/[a-z]/.test(formData.password) ||
+      !/[0-9]/.test(formData.password)
+    ) {
+      nextErrors.password =
+        "Password must be at least 8 characters with an uppercase letter, a lowercase letter, and a number";
+    }
     if (isPasswordMismatch) nextErrors.confirmPassword = "Passwords do not match";
     if (!formData.agreedToTerms) nextErrors.terms = "You must accept the terms of service";
 
@@ -248,7 +256,16 @@ const Register = () => {
       navigate("/onboarding");
     } catch (err) {
       const message = getApiMessage(err, "Verification failed");
-      setCodeError(message);
+
+      // If the error is password-related (backend rejects the password), go back to step 1
+      if (message.toLowerCase().includes("password")) {
+        setCodeSent(false);
+        setStep(1);
+        setErrors((prev) => ({ ...prev, password: message }));
+        setVerificationCode(emptyVerificationCode());
+      } else {
+        setCodeError(message);
+      }
 
       if (err instanceof AxiosError && err.response?.status === 429) {
         setVerificationCode(emptyVerificationCode());
@@ -359,7 +376,7 @@ const Register = () => {
                   disabled={codeSent || sendingCode || verifying || registering}
                 />
               </div>
-              {errors.name && <p className="text-[11px] text-red-400 ml-1 animate-in fade-in">{errors.name}</p>}
+              {!codeSent && errors.name && <p className="text-[11px] text-red-400 ml-1 animate-in fade-in">{errors.name}</p>}
             </div>
 
             <div className="space-y-1.5 anim-slide-up-3">
@@ -382,7 +399,7 @@ const Register = () => {
                 />
                 {isEmailValid && <CheckCircle2 className="absolute right-3.5 h-5 w-5 text-emerald-500 pointer-events-none animate-in zoom-in" />}
               </div>
-              {errors.email && <p className="text-[11px] text-red-400 ml-1 animate-in fade-in">{errors.email}</p>}
+              {!codeSent && errors.email && <p className="text-[11px] text-red-400 ml-1 animate-in fade-in">{errors.email}</p>}
             </div>
 
             <div className="space-y-1.5 anim-slide-up-4">
@@ -426,7 +443,7 @@ const Register = () => {
                   {strength.label || "None"}
                 </span>
               </div>
-              {errors.password && <p className="text-[11px] text-red-400 ml-1 mt-1 animate-in fade-in">{errors.password}</p>}
+              {!codeSent && errors.password && <p className="text-[11px] text-red-400 ml-1 mt-1 animate-in fade-in">{errors.password}</p>}
             </div>
 
             <div className="space-y-1.5 anim-slide-up-5 mt-1">
@@ -450,7 +467,7 @@ const Register = () => {
                 {isPasswordMatch && <CheckCircle2 className="absolute right-3.5 h-5 w-5 text-emerald-500 pointer-events-none animate-in zoom-in" />}
                 {isPasswordMismatch && <XCircle className="absolute right-3.5 h-5 w-5 text-red-500 pointer-events-none animate-in zoom-in" />}
               </div>
-              {errors.confirmPassword && <p className="text-[11px] text-red-400 ml-1 animate-in fade-in">{errors.confirmPassword}</p>}
+              {!codeSent && errors.confirmPassword && <p className="text-[11px] text-red-400 ml-1 animate-in fade-in">{errors.confirmPassword}</p>}
             </div>
 
             <div className="pt-2 anim-slide-up-6">
@@ -474,7 +491,7 @@ const Register = () => {
                   I agree to the <a href="#" className="text-violet-400 hover:text-violet-300 hover:underline">Terms of Service</a> and <a href="#" className="text-violet-400 hover:text-violet-300 hover:underline">Privacy Policy</a>
                 </span>
               </label>
-              {errors.terms && <p className="text-[11px] text-red-400 ml-6 mt-1 animate-in fade-in">{errors.terms}</p>}
+              {!codeSent && errors.terms && <p className="text-[11px] text-red-400 ml-6 mt-1 animate-in fade-in">{errors.terms}</p>}
             </div>
 
             <div className="pt-3 anim-slide-up-6">
