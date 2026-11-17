@@ -50,7 +50,8 @@ Respond ONLY with a raw JSON array, no markdown, no backticks, no explanation:
 
     const completion = await groq.chat.completions.create({
       model: "openai/gpt-oss-120b",
-      max_tokens: 2048,
+      reasoning_effort: "low",
+      max_tokens: 2500,
       temperature: 0.7,
       messages: [
         {
@@ -101,7 +102,8 @@ Respond ONLY with raw JSON, no markdown, no backticks:
 
     const completion = await groq.chat.completions.create({
       model: "openai/gpt-oss-120b",
-      max_tokens: 1500,
+      reasoning_effort: "low",
+      max_tokens: 2500,
       temperature: 0.5,
       messages: [
         {
@@ -196,6 +198,7 @@ Respond ONLY with raw JSON:
 
     const completion = await groq.chat.completions.create({
       model: "openai/gpt-oss-120b",
+      reasoning_effort: "low",
       max_tokens: 4000,
       temperature: 0.7,
       messages: [

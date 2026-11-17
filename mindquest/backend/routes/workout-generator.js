@@ -102,8 +102,9 @@ Rules:
 - Be specific with rep ranges based on their goal`;
 
     const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-120b",
-      max_tokens: 1500,
+      model: "openai/gpt-oss-20b",
+      reasoning_effort: "low",
+      max_tokens: 2500,
       temperature: 0.5,
       messages: [
         { role: "system", content: "Expert personal trainer. Raw JSON only. No markdown." },

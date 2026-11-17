@@ -323,8 +323,9 @@ Be specific to their actual numbers. If calories are 0, say they haven't logged 
 
     try {
       const completion = await groq.chat.completions.create({
-        model: "openai/gpt-oss-120b",
-        max_tokens: 2000,
+        model: "openai/gpt-oss-20b",
+        reasoning_effort: "low",
+        max_tokens: 2500,
         temperature: 0.4,
         messages: [
           { role: "system", content: "Expert nutritionist. Raw JSON only. No markdown." },

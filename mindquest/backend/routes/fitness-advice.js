@@ -349,8 +349,9 @@ Generate a comprehensive fitness analysis. Respond ONLY with raw JSON, no markdo
 Be specific to their actual numbers and exercises. Use their name. Generate 4-6 insights. Reference real exercises they've done.`;
 
         const completion = await groq.chat.completions.create({
-          model: "openai/gpt-oss-120b",
-          max_tokens: 2000,
+          model: "openai/gpt-oss-20b",
+          reasoning_effort: "low",
+          max_tokens: 2500,
           temperature: 0.4,
           messages: [
             { role: "system", content: "Elite strength coach. Raw JSON only. No markdown." },

@@ -23,8 +23,9 @@ Respond ONLY with a raw JSON object, no markdown, no backticks, no explanation:
 }`;
 
     const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-120b",
-      max_tokens: 150,
+      model: "openai/gpt-oss-20b",
+      reasoning_effort: "low",
+      max_tokens: 400,
       temperature: 0.7,
       messages: [
         {

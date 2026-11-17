@@ -444,7 +444,8 @@ Dairy: Whole milk 61/3.2/4.8/3.3 | Cheddar 403/25/1.3/33
 
     const completion = await groq.chat.completions.create({
       model: GROQ_TEXT_MODEL,
-      max_tokens: 600,
+      reasoning_effort: "low",
+      max_tokens: 1500,
       temperature: 0.3,
       messages: [
         { role: "system", content: systemPrompt },
@@ -585,7 +586,7 @@ If the user clearly asks you to log food from the image, respond with ONLY valid
     const completion = await groq.chat.completions.create({
       model: GROQ_VISION_MODEL,
       temperature: 0.2,
-      max_tokens: 900,
+      max_tokens: 2000,
       messages: [
         { role: "system", content: systemPrompt },
         {

@@ -29,7 +29,9 @@ Respond ONLY with raw JSON:
 }`;
 
     const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-120b",
+      model: "openai/gpt-oss-20b",
+      max_tokens: 800,
+      reasoning_effort: "low",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.3,
       response_format: { type: "json_object" }
