@@ -323,7 +323,7 @@ Be specific to their actual numbers. If calories are 0, say they haven't logged 
 
     try {
       const completion = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: "openai/gpt-oss-120b",
         max_tokens: 2000,
         temperature: 0.4,
         messages: [

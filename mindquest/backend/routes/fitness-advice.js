@@ -349,7 +349,7 @@ Generate a comprehensive fitness analysis. Respond ONLY with raw JSON, no markdo
 Be specific to their actual numbers and exercises. Use their name. Generate 4-6 insights. Reference real exercises they've done.`;
 
         const completion = await groq.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
+          model: "openai/gpt-oss-120b",
           max_tokens: 2000,
           temperature: 0.4,
           messages: [

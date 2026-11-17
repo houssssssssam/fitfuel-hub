@@ -49,7 +49,7 @@ Respond ONLY with a raw JSON array, no markdown, no backticks, no explanation:
 ]`;
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       max_tokens: 2048,
       temperature: 0.7,
       messages: [
@@ -100,7 +100,7 @@ Respond ONLY with raw JSON, no markdown, no backticks:
 }`;
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       max_tokens: 1500,
       temperature: 0.5,
       messages: [
@@ -195,7 +195,7 @@ Respond ONLY with raw JSON:
     console.log("Generating plan with mealCount:", mealCount, "slots:", mealSlots);
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       max_tokens: 4000,
       temperature: 0.7,
       messages: [

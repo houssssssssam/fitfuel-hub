@@ -6,7 +6,7 @@ const { pushRecentFood } = require("../utils/foodLibrary");
 
 const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const GROQ_TEXT_MODEL = process.env.GROQ_TEXT_MODEL || "llama-3.3-70b-versatile";
+const GROQ_TEXT_MODEL = process.env.GROQ_TEXT_MODEL || "openai/gpt-oss-120b";
 const GROQ_VISION_MODEL = process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
 const MAX_VISION_UPLOAD_BYTES = Math.floor(2.8 * 1024 * 1024);
 const MAX_GROQ_BASE64_BYTES = 4 * 1024 * 1024;
