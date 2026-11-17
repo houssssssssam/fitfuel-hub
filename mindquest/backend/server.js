@@ -135,6 +135,17 @@ app.get("/api/test", (req, res) => {
   res.json({ message: "Backend reached successfully" });
 });
 
+// Keep-alive + DB health check: pinged by an external cron to prevent
+// Render free-tier sleep and MongoDB Atlas inactivity auto-pause.
+app.get("/api/health", async (req, res) => {
+  try {
+    await mongoose.connection.db.admin().ping();
+    res.json({ status: "ok", db: "connected", uptime: Math.round(process.uptime()) });
+  } catch (err) {
+    res.status(503).json({ status: "error", db: "disconnected" });
+  }
+});
+
 // ── MONGODB ───────────────────────────────────────────────────────────────────
 mongoose
   .connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/mindquest", {
