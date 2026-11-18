@@ -918,7 +918,7 @@ export default function ChatBot() {
         </div>
 
         {!isTyping && (messages[messages.length - 1]?.role === "assistant" || messages.length === 1) && (
-          <div className="px-4 pb-3 flex overflow-x-auto gap-2 no-scrollbar shrink-0">
+          <div className="px-4 pb-3 flex overflow-x-auto gap-2 no-scrollbar shrink-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {dynamicSuggestions.map((chip, index) => (
               <button
                 key={index}
@@ -997,7 +997,7 @@ export default function ChatBot() {
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder="Ask FuelBot, attach or paste a photo..."
+              placeholder="Message FuelBot..."
               className="flex-1 max-h-[80px] min-h-[40px] bg-transparent resize-none py-2.5 px-3 focus:outline-none text-sm leading-tight text-foreground disabled:opacity-50 scrollbar-thin scrollbar-thumb-white/10"
               rows={1}
             />
