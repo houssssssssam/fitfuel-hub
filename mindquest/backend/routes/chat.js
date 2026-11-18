@@ -7,7 +7,64 @@ const { pushRecentFood } = require("../utils/foodLibrary");
 const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const GROQ_TEXT_MODEL = process.env.GROQ_TEXT_MODEL || "openai/gpt-oss-120b";
-const GROQ_VISION_MODEL = process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+// Primary vision model, then fallback when the primary is overloaded or rate-limited.
+const GEMINI_VISION_MODELS = [
+  process.env.GEMINI_VISION_MODEL || "gemini-flash-latest",
+  process.env.GEMINI_VISION_FALLBACK_MODEL || "gemini-flash-lite-latest",
+];
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+const callGeminiVision = async (messages) => {
+  if (!GEMINI_API_KEY) {
+    const err = new Error("GEMINI_API_KEY is not configured");
+    err.status = 401;
+    throw err;
+  }
+
+  let lastError;
+  for (const model of GEMINI_VISION_MODELS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    try {
+      const response = await fetch(GEMINI_ENDPOINT, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${GEMINI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model, temperature: 0.2, max_tokens: 2000, messages }),
+      });
+      const data = await response.json().catch(() => ({}));
+      const payload = Array.isArray(data) ? data[0] : data;
+
+      if (!response.ok) {
+        const err = new Error(payload?.error?.message || `Gemini request failed (${response.status})`);
+        err.status = response.status;
+        lastError = err;
+        if (RETRYABLE_STATUSES.has(response.status)) {
+          console.warn(`Gemini vision model ${model} returned ${response.status}, trying fallback`);
+          continue;
+        }
+        throw err;
+      }
+
+      return (payload?.choices?.[0]?.message?.content || "").trim();
+    } catch (error) {
+      if (error.name === "AbortError") {
+        console.warn(`Gemini vision model ${model} timed out, trying fallback`);
+        lastError = Object.assign(new Error("Gemini vision timed out"), { status: 504 });
+        continue;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw lastError;
+};
 const MAX_VISION_UPLOAD_BYTES = Math.floor(2.8 * 1024 * 1024);
 const MAX_GROQ_BASE64_BYTES = 4 * 1024 * 1024;
 
@@ -304,7 +361,7 @@ const getVisionErrorPayload = (error) => {
 
   const status = error?.status || error?.response?.status;
 
-  if (status === 429) {
+  if (status === 429 || status === 503 || status === 504) {
     return {
       status: 429,
       message: "FuelBot vision is busy right now. Please try again in a moment.",
@@ -314,7 +371,7 @@ const getVisionErrorPayload = (error) => {
   if (status === 401 || status === 403) {
     return {
       status: 502,
-      message: "FuelBot vision could not reach Groq. Please check the API key configuration.",
+      message: "FuelBot vision could not reach Gemini. Please check the API key configuration.",
     };
   }
 
@@ -583,31 +640,24 @@ If the user clearly asks you to log food from the image, respond with ONLY valid
 5. Return JSON only for explicit image-based food logging requests.
 6. Otherwise respond in concise plain text.`;
 
-    const completion = await groq.chat.completions.create({
-      model: GROQ_VISION_MODEL,
-      temperature: 0.2,
-      max_tokens: 2000,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: (req.body?.message || "").trim() || "What's in this image and how does it fit my goals?",
+    const rawReply = await callGeminiVision([
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: (req.body?.message || "").trim() || "What's in this image and how does it fit my goals?",
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:${imageFile.mimetype};base64,${base64Image}`,
             },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${imageFile.mimetype};base64,${base64Image}`,
-              },
-            },
-          ],
-        },
-      ],
-    });
-
-    const rawReply = (completion.choices[0]?.message?.content || "").trim();
+          },
+        ],
+      },
+    ]);
     const jsonReply = unwrapJsonReply(rawReply);
 
     try {
