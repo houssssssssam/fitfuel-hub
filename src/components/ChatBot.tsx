@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { toast } from "sonner";
 import DOMPurify from "dompurify";
 
-type ChatMessageType = "text" | "FOOD_LOG";
+type ChatMessageType = "text" | "FOOD_LOG" | "FOOD_LOG_PENDING";
 
 type FoodLogged = {
   name: string;
@@ -25,6 +25,8 @@ interface Message {
   foodLogged?: FoodLogged | null;
   foodsLogged?: FoodLogged[];
   imageUrls?: string[];
+  pendingFoods?: FoodLogged[];
+  pendingStatus?: "pending" | "confirming" | "cancelled";
 }
 
 type Attachment = {
@@ -69,6 +71,7 @@ type ChatResponse = {
   type?: ChatMessageType;
   foodLogged?: FoodLogged | null;
   foodsLogged?: FoodLogged[] | null;
+  pendingFoods?: FoodLogged[] | null;
   updatedIntake?: {
     calories: number;
     protein: number;
@@ -132,7 +135,11 @@ const getStoredMessages = (): Message[] => {
         return {
           role: entry.role,
           content: entry.content,
-          type: entry.type === "FOOD_LOG" ? "FOOD_LOG" : "text",
+          type: entry.type === "FOOD_LOG" || entry.type === "FOOD_LOG_PENDING" ? entry.type : "text",
+          pendingFoods: entry.role === "assistant" && Array.isArray(entry.pendingFoods)
+            ? entry.pendingFoods.filter(isFoodLogged)
+            : [],
+          pendingStatus: entry.pendingStatus === "cancelled" ? "cancelled" : "pending",
           foodLogged: entry.role === "assistant" && isFoodLogged(entry.foodLogged) ? entry.foodLogged : null,
           foodsLogged: entry.role === "assistant" && Array.isArray(entry.foodsLogged)
             ? entry.foodsLogged.filter(isFoodLogged)
@@ -408,6 +415,68 @@ const FoodLogBubble = ({
   );
 };
 
+const PendingFoodLogBubble = ({
+  message,
+  onConfirm,
+  onCancel,
+}: {
+  message: Message;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) => {
+  const foods = message.pendingFoods ?? [];
+  const totals = foods.reduce(
+    (sum, food) => ({
+      calories: sum.calories + food.calories,
+      protein: sum.protein + food.protein,
+    }),
+    { calories: 0, protein: 0 },
+  );
+  const status = message.pendingStatus ?? "pending";
+
+  return (
+    <div className="flex w-full justify-start">
+      <div className="flex gap-2.5 max-w-[92%] sm:max-w-[88%]">
+        <div className="flex-shrink-0 h-8 w-8 rounded-full bg-green-500/20 border border-green-500/30 text-green-500 flex items-center justify-center">
+          <Bot className="h-4 w-4" />
+        </div>
+        <div className="flex flex-col gap-2 min-w-0">
+          <div className="bg-secondary border border-border/50 rounded-2xl rounded-tl-sm px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary mb-2">
+              {status === "cancelled" ? "Not logged" : "Confirm to log"}
+            </p>
+            <ul className="space-y-1.5">
+              {foods.map((food, index) => (
+                <li key={`${food.name}-${index}`} className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-foreground capitalize truncate">
+                    {food.name} <span className="text-muted-foreground text-xs">{food.quantity}{food.unit}</span>
+                  </span>
+                  <span className="text-muted-foreground text-xs shrink-0">{food.calories} cal · {food.protein}g P</span>
+                </li>
+              ))}
+            </ul>
+            {foods.length > 1 && (
+              <p className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border/50">
+                Total: {Math.round(totals.calories)} cal · {Math.round(totals.protein)}g protein
+              </p>
+            )}
+          </div>
+          {status !== "cancelled" && (
+            <div className="flex gap-2">
+              <Button size="sm" onClick={onConfirm} disabled={status === "confirming"} className="h-8 rounded-full bg-green-600 hover:bg-green-500 text-white">
+                {status === "confirming" ? "Logging…" : "Add to log"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onCancel} disabled={status === "confirming"} className="h-8 rounded-full">
+                Cancel
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>(() => getStoredMessages());
@@ -527,6 +596,12 @@ export default function ChatBot() {
     attachmentsRef.current = attachments;
   }, [attachments]);
 
+  useEffect(() => {
+    const handleCleared = () => setMessages([{ ...FALLBACK_WELCOME_MESSAGE }]);
+    window.addEventListener("fuelbotcleared", handleCleared);
+    return () => window.removeEventListener("fuelbotcleared", handleCleared);
+  }, []);
+
   useEffect(() => () => {
     attachmentsRef.current.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
 
@@ -637,6 +712,57 @@ export default function ChatBot() {
     void attachImageFiles(files).then(() => textareaRef.current?.focus());
   };
 
+  const applyLoggedFoods = (foods: FoodLogged[], updatedIntake?: ChatResponse["updatedIntake"]) => {
+    if (foods.length === 0) return;
+    window.dispatchEvent(
+      new CustomEvent("foodLoggedByAI", {
+        detail: { foodLogged: foods[0], foodsLogged: foods, updatedIntake: updatedIntake ?? null },
+      }),
+    );
+
+    if (updatedIntake) {
+      setUserStats((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          caloriesRemaining: prev.calorieTarget - updatedIntake.calories,
+          proteinPercent: prev.proteinTarget > 0
+            ? Math.min((updatedIntake.protein / prev.proteinTarget) * 100, 100)
+            : prev.proteinPercent,
+        };
+      });
+    }
+  };
+
+  const updateMessageAt = (index: number, changes: Partial<Message>) =>
+    setMessages((prev) => prev.map((message, i) => (i === index ? { ...message, ...changes } : message)));
+
+  const confirmPendingLog = async (index: number) => {
+    const foods = messages[index]?.pendingFoods ?? [];
+    if (foods.length === 0) return;
+    updateMessageAt(index, { pendingStatus: "confirming" });
+
+    try {
+      const { data } = await api.post<ChatResponse>("/api/chat/confirm-log", { foods });
+      const logged = Array.isArray(data.foodsLogged) && data.foodsLogged.length > 0
+        ? data.foodsLogged
+        : data.foodLogged ? [data.foodLogged] : [];
+      updateMessageAt(index, {
+        type: "FOOD_LOG",
+        content: data.reply || "Logged!",
+        foodLogged: logged[0] ?? null,
+        foodsLogged: logged,
+        pendingFoods: [],
+      });
+      applyLoggedFoods(logged, data.updatedIntake);
+    } catch (err) {
+      updateMessageAt(index, { pendingStatus: "pending" });
+      toast.error((err as { response?: { data?: { message?: string } } }).response?.data?.message || "Couldn't log that. Try again.");
+    }
+  };
+
+  const cancelPendingLog = (index: number) => updateMessageAt(index, { pendingStatus: "cancelled" });
+
   const sendMessage = async (content: string) => {
     const trimmedContent = content.trim();
     const attachedImages = attachmentsRef.current;
@@ -702,8 +828,8 @@ export default function ChatBot() {
             })).slice(-10),
           });
 
-      const { reply, type, foodLogged, foodsLogged, updatedIntake } = res.data;
-      const safeType: ChatMessageType = type === "FOOD_LOG" ? "FOOD_LOG" : "text";
+      const { reply, type, foodLogged, foodsLogged, pendingFoods, updatedIntake } = res.data;
+      const safeType: ChatMessageType = type === "FOOD_LOG" || type === "FOOD_LOG_PENDING" ? type : "text";
       const safeFoods = safeType === "FOOD_LOG"
         ? (Array.isArray(foodsLogged) && foodsLogged.length > 0 ? foodsLogged : foodLogged ? [foodLogged] : [])
         : [];
@@ -714,30 +840,14 @@ export default function ChatBot() {
         foodLogged: safeFoods[0] ?? null,
         foodsLogged: safeFoods,
         imageUrls: [],
+        pendingFoods: safeType === "FOOD_LOG_PENDING" && Array.isArray(pendingFoods) ? pendingFoods : [],
+        pendingStatus: "pending",
       };
 
       setMessages((prev) => [...prev, botMessage]);
 
-      if (safeType === "FOOD_LOG" && safeFoods.length > 0) {
-        window.dispatchEvent(
-          new CustomEvent("foodLoggedByAI", {
-            detail: { foodLogged: safeFoods[0], foodsLogged: safeFoods, updatedIntake: updatedIntake ?? null },
-          }),
-        );
-
-        if (updatedIntake) {
-          setUserStats((prev) => {
-            if (!prev) return prev;
-
-            return {
-              ...prev,
-              caloriesRemaining: prev.calorieTarget - updatedIntake.calories,
-              proteinPercent: prev.proteinTarget > 0
-                ? Math.min((updatedIntake.protein / prev.proteinTarget) * 100, 100)
-                : prev.proteinPercent,
-            };
-          });
-        }
+      if (safeType === "FOOD_LOG") {
+        applyLoggedFoods(safeFoods, updatedIntake);
       }
     } catch (err) {
       console.error(err);
@@ -837,7 +947,13 @@ export default function ChatBot() {
           {messages.map((message, index) => (
             <div key={index}>
               {message.role === "assistant" ? (
-                message.type === "FOOD_LOG" && (message.foodsLogged?.length || message.foodLogged) ? (
+                message.type === "FOOD_LOG_PENDING" && message.pendingFoods?.length ? (
+                  <PendingFoodLogBubble
+                    message={message}
+                    onConfirm={() => void confirmPendingLog(index)}
+                    onCancel={() => cancelPendingLog(index)}
+                  />
+                ) : message.type === "FOOD_LOG" && (message.foodsLogged?.length || message.foodLogged) ? (
                   <FoodLogBubble
                     foods={message.foodsLogged?.length ? message.foodsLogged : message.foodLogged ? [message.foodLogged] : []}
                     content={message.content}

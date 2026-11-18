@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import { useTranslation } from "react-i18next";
+import { toDisplayWeight, useUnits, weightUnit } from "@/lib/units";
 
 // ─── Custom Hook ─────────────────────────────────────────────────────────────
 const useAnimatedNumber = (end: number, duration = 1200) => {
@@ -451,8 +452,29 @@ const Dashboard = () => {
   // Animated versions for the top StatCards
   const animatedCalories = useAnimatedNumber(intake.calories);
   const animatedProtein = useAnimatedNumber(intake.protein);
-  const animatedWorkouts = useAnimatedNumber(5);
-  const animatedVolume = useAnimatedNumber(70200);
+  // This week's real workouts (Monday → today).
+  const units = useUnits();
+  const [weekStats, setWeekStats] = useState({ count: 0, volumeKg: 0 });
+  useEffect(() => {
+    const raw = localStorage.getItem("user");
+    const id = raw ? (JSON.parse(raw) as { id?: string }).id : undefined;
+    if (!id) return;
+    const weekStart = new Date();
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+    void api
+      .get<{ date: string; totalVolume?: number }[]>(`/api/profile/${id}/workouts`)
+      .then(({ data }) => {
+        const thisWeek = (data || []).filter((workout) => new Date(workout.date) >= weekStart);
+        setWeekStats({
+          count: thisWeek.length,
+          volumeKg: thisWeek.reduce((sum, workout) => sum + (workout.totalVolume || 0), 0),
+        });
+      })
+      .catch(() => undefined);
+  }, []);
+  const animatedWorkouts = useAnimatedNumber(weekStats.count);
+  const animatedVolume = useAnimatedNumber(toDisplayWeight(weekStats.volumeKg, units, 0));
 
   return (
     <div className="space-y-6 md:space-y-8 animate-fade-in pb-8">
@@ -486,15 +508,13 @@ const Dashboard = () => {
           subtitle={t("sessionsCompleted")}
           icon={<Dumbbell className="h-5 w-5 md:h-6 md:w-6" />}
           variant="primary"
-          trend={{ value: 25, isPositive: true }}
         />
         <StatCard
           title={t("weeklyVolume")}
           value={animatedVolume.toLocaleString()}
-          subtitle={t("lbsLifted")}
+          subtitle={`${weightUnit(units)} lifted this week`}
           icon={<TrendingUp className="h-5 w-5 md:h-6 md:w-6" />}
           variant="warning"
-          trend={{ value: 8, isPositive: true }}
         />
       </div>
 

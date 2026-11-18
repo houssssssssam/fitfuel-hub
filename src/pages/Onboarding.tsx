@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { calculateTargets, GOAL_CALORIE_ADJUSTMENT } from "@/lib/nutrition";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -42,37 +43,15 @@ const Onboarding = () => {
   const handleBack = () => setStep((p) => Math.max(p - 1, 1));
   const handleSkip = () => navigate("/dashboard");
 
-  const calculateMacros = () => {
-    const age = parseNumericField(data.age);
-    const height = parseNumericField(data.height);
-    const weight = parseNumericField(data.weight);
-
-    let bmr = 10 * weight + 6.25 * height - 5 * age;
-    if (data.gender === "Male") bmr += 5;
-    else if (data.gender === "Female") bmr -= 161;
-    else bmr -= 78; // average offset for 'Other'
-
-    const multipliers: Record<string, number> = {
-      "Sedentary": 1.2,
-      "Lightly Active": 1.375,
-      "Moderately Active": 1.55,
-      "Very Active": 1.725,
-      "Extremely Active": 1.9,
-    };
-    const tdee = bmr * multipliers[data.activity];
-
-    let calories = tdee;
-    if (data.goal === "Lose Weight") calories -= 500;
-    else if (data.goal === "Build Muscle") calories += 300;
-    
-    calories = Math.round(calories);
-
-    const protein = Math.round(weight * (data.goal === "Build Muscle" ? 2.2 : 1.8));
-    const fats = Math.round((calories * 0.25) / 9);
-    const carbs = Math.max(0, Math.round((calories - protein * 4 - fats * 9) / 4));
-
-    return { calories, protein, carbs, fats };
-  };
+  const calculateMacros = () =>
+    calculateTargets({
+      age: parseNumericField(data.age),
+      height: parseNumericField(data.height),
+      weight: parseNumericField(data.weight),
+      gender: data.gender,
+      activityLevel: data.activity,
+      fitnessGoal: data.goal,
+    });
 
   const submitProfile = async () => {
     if (!userId) return;
@@ -262,7 +241,7 @@ const Onboarding = () => {
             <h4 className="text-white font-semibold">Summary</h4>
           </div>
           <p className="text-white/60 text-sm leading-relaxed">
-            Based on your profile, your maintenance TDEE is roughly {Math.round(targets.calories + (data.goal === 'Lose Weight' ? 500 : data.goal === 'Build Muscle' ? -300 : 0))} kcal. 
+            Based on your profile, your maintenance TDEE is roughly {Math.round(targets.calories - (GOAL_CALORIE_ADJUSTMENT[data.goal] ?? 0))} kcal. 
             We've adjusted your intake targets to align with your goal to <strong className="text-white">{data.goal.toLowerCase()}</strong>.
           </p>
         </div>

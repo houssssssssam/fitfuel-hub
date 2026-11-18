@@ -130,6 +130,7 @@ app.use("/api/exercises", protect, require("./routes/exercises"));
 app.use("/api/fitness-advice", protect, authorizeOwner, require("./routes/fitness-advice"));
 app.use("/api/workout-generator", protect, authorizeOwner, require("./routes/workout-generator"));
 app.use("/api/meal-plans", protect, require("./routes/mealPlans"));
+app.use("/api/notifications", protect, require("./routes/notifications"));
 
 app.get("/api/test", (req, res) => {
   res.json({ message: "Backend reached successfully" });
@@ -193,4 +194,5 @@ app.use((err, req, res, next) => {
 const port = Number(process.env.PORT) || 5000;
 app.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
+  require("./utils/notifications").startReminderScheduler();
 });

@@ -1,6 +1,7 @@
 const express = require("express");
 const Groq = require("groq-sdk");
 const User = require("../models/User");
+const { withAiPreferences } = require("../utils/aiContext");
 
 const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -108,7 +109,7 @@ Rules:
       temperature: 0.5,
       messages: [
         { role: "system", content: "Expert personal trainer. Raw JSON only. No markdown." },
-        { role: "user", content: prompt },
+        { role: "user", content: withAiPreferences(prompt, user, { json: true }) },
       ],
     });
 

@@ -2,6 +2,7 @@ const express = require("express");
 const Groq = require("groq-sdk");
 const multer = require("multer");
 const User = require("../models/User");
+const { withAiPreferences } = require("../utils/aiContext");
 const { pushRecentFood } = require("../utils/foodLibrary");
 
 const router = express.Router();
@@ -363,6 +364,23 @@ const applyFoodLogToUser = async (user, today, parsed) => {
   };
 };
 
+/**
+ * When the user turned on "Ask before logging", FuelBot returns the foods it
+ * would log instead of saving them; the client confirms via POST /confirm-log.
+ */
+const buildPendingFoodLog = (parsed) => {
+  const rawFoods = Array.isArray(parsed?.foods) && parsed.foods.length > 0 ? parsed.foods : [parsed?.food];
+  const foods = rawFoods.map(normalizeFoodLog).filter(Boolean);
+  if (foods.length === 0) return null;
+
+  const totalCalories = foods.reduce((sum, food) => sum + food.calories, 0);
+  const names = foods.map((food) => `**${food.quantity}${food.unit} ${food.name}**`).join(", ");
+  return {
+    reply: `Here's what I'd add to your log: ${names} (${Math.round(totalCalories)} cal). Confirm to log it.`,
+    pendingFoods: foods,
+  };
+};
+
 const getVisionErrorPayload = (error) => {
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
     return {
@@ -531,7 +549,7 @@ Dairy: Whole milk 61/3.2/4.8/3.3 | Cheddar 403/25/1.3/33
       max_tokens: 1500,
       temperature: 0.3,
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: withAiPreferences(systemPrompt, user, { json: true }) },
         ...messages.slice(-10).map((message) => ({
           role: message.role,
           content: message.content,
@@ -546,7 +564,14 @@ Dairy: Whole milk 61/3.2/4.8/3.3 | Cheddar 403/25/1.3/33
       const parsed = JSON.parse(jsonReply);
 
       // Server-side guard: only honour FOOD_LOG if the user actually asked to log
-      if (parsed.type === "FOOD_LOG" && parsed.food && hasLoggingIntent) {
+      if (parsed.type === "FOOD_LOG" && (parsed.food || Array.isArray(parsed.foods)) && hasLoggingIntent) {
+        if (user.preferences?.aiConfirmBeforeLog) {
+          const pending = buildPendingFoodLog(parsed);
+          if (pending) {
+            return res.json({ reply: pending.reply, type: "FOOD_LOG_PENDING", pendingFoods: pending.pendingFoods });
+          }
+        }
+
         const foodLogResult = await applyFoodLogToUser(user, today, parsed);
 
         if (foodLogResult.error) {
@@ -575,6 +600,38 @@ Dairy: Whole milk 61/3.2/4.8/3.3 | Cheddar 403/25/1.3/33
   } catch (err) {
     console.error("Chat error:", err);
     return res.status(500).json({ message: "Chat failed" });
+  }
+});
+
+// POST /api/chat/confirm-log — save foods FuelBot proposed (Ask before logging)
+router.post("/confirm-log", async (req, res) => {
+  try {
+    const foods = Array.isArray(req.body?.foods) ? req.body.foods.slice(0, 10) : [];
+    if (foods.length === 0) {
+      return res.status(400).json({ message: "No foods to log" });
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const today = await checkAndResetDaily(user);
+    ensureUserNutritionState(user);
+
+    const result = await applyFoodLogToUser(user, today, { foods });
+    if (result.error) {
+      return res.status(400).json({ message: result.error });
+    }
+
+    return res.json({
+      reply: result.reply,
+      type: "FOOD_LOG",
+      foodLogged: result.foodLogged,
+      foodsLogged: result.foodsLogged,
+      updatedIntake: result.updatedIntake,
+    });
+  } catch (error) {
+    console.error("Confirm food log error:", error);
+    return res.status(500).json({ message: "Failed to log food" });
   }
 });
 
@@ -678,7 +735,7 @@ If the user clearly asks you to log food from the image(s), respond with ONLY va
 6. Otherwise respond in concise plain text.`;
 
     const rawReply = await callGeminiVision([
-      { role: "system", content: systemPrompt },
+      { role: "system", content: withAiPreferences(systemPrompt, user, { json: true }) },
       {
         role: "user",
         content: [
@@ -699,6 +756,18 @@ If the user clearly asks you to log food from the image(s), respond with ONLY va
       const parsed = JSON.parse(jsonReply);
 
       if (parsed.type === "FOOD_LOG" && (parsed.food || Array.isArray(parsed.foods))) {
+        if (user.preferences?.aiConfirmBeforeLog) {
+          const pending = buildPendingFoodLog(parsed);
+          if (pending) {
+            return res.json({
+              reply: pending.reply,
+              type: "FOOD_LOG_PENDING",
+              pendingFoods: pending.pendingFoods,
+              hasImage: true,
+            });
+          }
+        }
+
         const foodLogResult = await applyFoodLogToUser(user, today, parsed);
 
         if (foodLogResult.error) {

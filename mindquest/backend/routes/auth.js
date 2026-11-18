@@ -44,6 +44,9 @@ setInterval(() => {
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const signRefreshToken = (user) =>
+  jwt.sign({ id: user._id, tv: user.tokenVersion || 0 }, process.env.JWT_REFRESH_SECRET, { expiresIn: "30d" });
+
 async function sendEmail(to, subject, htmlContent) {
   const client = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
 
@@ -98,7 +101,7 @@ router.post("/register", async (req, res) => {
     verificationCodes.delete(verifiedKey);
 
     const accessToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
-    const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d' });
+    const refreshToken = signRefreshToken(user);
 
     res.cookie("refreshToken", refreshToken, getRefreshTokenCookieOptions());
 
@@ -297,7 +300,7 @@ router.post("/login", async (req, res) => {
     }
 
     const accessToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
-    const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d' });
+    const refreshToken = signRefreshToken(user);
 
     res.cookie("refreshToken", refreshToken, getRefreshTokenCookieOptions());
 
@@ -405,11 +408,136 @@ router.post("/change-password", protect, async (req, res) => {
     }
 
     user.password = await bcrypt.hash(newPassword, 10);
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
 
+    // Keep this device signed in; other devices lose their session.
+    res.cookie("refreshToken", signRefreshToken(user), getRefreshTokenCookieOptions());
     res.json({ message: "Password updated successfully" });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/**
+ * LOG OUT OTHER DEVICES
+ * POST /api/auth/logout-others
+ * Other devices can't refresh their session anymore (their current access
+ * token still works until it expires, at most 15 minutes).
+ */
+router.post("/logout-others", protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    await user.save();
+
+    res.cookie("refreshToken", signRefreshToken(user), getRefreshTokenCookieOptions());
+    res.json({ message: "Signed out of all other devices" });
+  } catch (err) {
+    console.error("Logout others error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/**
+ * CHANGE EMAIL (step 1): send a code to the new address
+ * POST /api/auth/change-email/request  { newEmail, password }
+ */
+router.post("/change-email/request", protect, async (req, res) => {
+  try {
+    const newEmail = req.body?.newEmail?.toLowerCase().trim();
+    const password = req.body?.password;
+
+    if (!newEmail || !password) {
+      return res.status(400).json({ message: "New email and current password are required" });
+    }
+    if (!emailRegex.test(newEmail)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!(await bcrypt.compare(password, user.password))) {
+      return res.status(400).json({ message: "Incorrect password" });
+    }
+    if (newEmail === user.email.toLowerCase()) {
+      return res.status(400).json({ message: "That's already your email" });
+    }
+    if (await User.exists({ email: newEmail })) {
+      return res.status(409).json({ message: "This email is already used by another account" });
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    verificationCodes.set(`email_change_${user._id}`, {
+      code,
+      newEmail,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      attempts: 0,
+    });
+
+    const html = `
+      <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0f1629;border-radius:16px;color:#f8fafc;">
+        <h2 style="margin:0 0 12px;">Confirm your new email</h2>
+        <p style="color:#94a3b8;line-height:1.6;">Use this code to change the email of your FitFuel Hub account to <strong>${newEmail}</strong>.</p>
+        <p style="font-size:40px;font-weight:800;letter-spacing:10px;color:#06b6d4;font-family:monospace;text-align:center;margin:28px 0;">${code}</p>
+        <p style="color:#64748b;font-size:13px;">This code expires in 10 minutes. If you didn't request this, ignore this email; your account is unchanged.</p>
+      </div>`;
+
+    try {
+      await sendEmail(newEmail, "Confirm your new FitFuel Hub email", html);
+    } catch (emailErr) {
+      verificationCodes.delete(`email_change_${user._id}`);
+      console.error("Change email send failed:", emailErr.message);
+      return res.status(422).json({ message: "Could not send the code. Check the address and try again." });
+    }
+
+    res.json({ message: `Code sent to ${newEmail}`, expiresIn: 600 });
+  } catch (err) {
+    console.error("Change email request error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/**
+ * CHANGE EMAIL (step 2): confirm the code
+ * POST /api/auth/change-email/confirm  { code }
+ */
+router.post("/change-email/confirm", protect, async (req, res) => {
+  try {
+    const key = `email_change_${req.userId}`;
+    const entry = verificationCodes.get(key);
+    const code = req.body?.code?.toString().trim();
+
+    if (!entry || entry.expiresAt < Date.now()) {
+      verificationCodes.delete(key);
+      return res.status(400).json({ message: "Code expired. Please request a new one." });
+    }
+
+    entry.attempts += 1;
+    if (entry.attempts > 5) {
+      verificationCodes.delete(key);
+      return res.status(429).json({ message: "Too many attempts. Please request a new code." });
+    }
+    if (code !== entry.code) {
+      return res.status(400).json({ message: "Incorrect code" });
+    }
+
+    if (await User.exists({ email: entry.newEmail, _id: { $ne: req.userId } })) {
+      verificationCodes.delete(key);
+      return res.status(409).json({ message: "This email is already used by another account" });
+    }
+
+    const user = await User.findByIdAndUpdate(req.userId, { email: entry.newEmail }, { new: true });
+    verificationCodes.delete(key);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({ message: "Email updated", email: user.email });
+  } catch (err) {
+    console.error("Change email confirm error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -433,8 +561,14 @@ router.post("/refresh", async (req, res) => {
       return res.status(401).json({ message: "User not found" });
     }
 
+    // Sessions signed out from "Log out other devices" carry an old version.
+    if ((decoded.tv || 0) !== (user.tokenVersion || 0)) {
+      res.clearCookie("refreshToken", getRefreshTokenCookieOptions());
+      return res.status(401).json({ message: "Session expired. Please sign in again." });
+    }
+
     const newAccessToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
-    const newRefreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d' });
+    const newRefreshToken = signRefreshToken(user);
 
     res.cookie("refreshToken", newRefreshToken, getRefreshTokenCookieOptions());
 

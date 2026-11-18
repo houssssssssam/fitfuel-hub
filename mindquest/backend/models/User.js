@@ -35,6 +35,56 @@ const UserSchema = new mongoose.Schema(
     fitnessGoal: { type: String, default: "Lose Weight" },
     goal: { type: String, default: "Lose Weight" },
 
+    targetWeight: Number,
+
+    dietaryPreferences: {
+      diet: {
+        type: String,
+        enum: ["none", "vegetarian", "vegan", "pescatarian", "halal", "kosher", "keto", "gluten-free"],
+        default: "none",
+      },
+      allergies: { type: [String], default: [] },
+      dislikes: { type: String, default: "", maxlength: 200 },
+    },
+
+    preferences: {
+      units: { type: String, enum: ["metric", "imperial"], default: "metric" },
+      appLanguage: { type: String, enum: ["en", "fr"], default: "en" },
+      aiLanguage: { type: String, enum: ["auto", "en", "fr"], default: "auto" },
+      aiConfirmBeforeLog: { type: Boolean, default: false },
+    },
+
+    // Incremented to invalidate refresh tokens on other devices.
+    tokenVersion: { type: Number, default: 0 },
+
+    pushSubscriptions: [
+      {
+        endpoint: { type: String, required: true },
+        keys: {
+          p256dh: String,
+          auth: String,
+        },
+        createdAt: { type: Date, default: Date.now },
+        _id: false,
+      },
+    ],
+
+    notificationSettings: {
+      enabled: { type: Boolean, default: false },
+      timezone: { type: String, default: "UTC" },
+      meals: {
+        enabled: { type: Boolean, default: true },
+        breakfast: { type: String, default: "09:00" },
+        lunch: { type: String, default: "13:00" },
+        dinner: { type: String, default: "20:00" },
+      },
+      water: { type: Boolean, default: true },
+      streak: { type: Boolean, default: true },
+    },
+
+    // "reminderKey" -> "YYYY-MM-DD" of the last send, so each reminder fires once a day.
+    notificationLog: { type: Map, of: String, default: {} },
+
     nutritionTargets: {
       calories: { type: Number, default: 2800 },
       protein: { type: Number, default: 180 },

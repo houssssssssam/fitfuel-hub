@@ -9,6 +9,54 @@ const {
 
 const router = express.Router();
 
+const PRIVATE_FIELDS = "-password -resetPasswordToken -resetPasswordExpires -tokenVersion -pushSubscriptions -notificationLog";
+const DIETS = ["none", "vegetarian", "vegan", "pescatarian", "halal", "kosher", "keto", "gluten-free"];
+
+const toPositiveNumber = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : undefined;
+};
+
+const sanitizeDietaryPreferences = (value) => {
+  if (!value || typeof value !== "object") return undefined;
+  return {
+    diet: DIETS.includes(value.diet) ? value.diet : "none",
+    allergies: (Array.isArray(value.allergies) ? value.allergies : [])
+      .filter((item) => typeof item === "string")
+      .map((item) => item.trim().slice(0, 40))
+      .filter(Boolean)
+      .filter((item, index, list) => list.findIndex((other) => other.toLowerCase() === item.toLowerCase()) === index)
+      .slice(0, 15),
+    dislikes: typeof value.dislikes === "string" ? value.dislikes.trim().slice(0, 200) : "",
+  };
+};
+
+const sanitizePreferences = (value, current = {}) => {
+  if (!value || typeof value !== "object") return undefined;
+  const next = {
+    units: current.units || "metric",
+    appLanguage: current.appLanguage || "en",
+    aiLanguage: current.aiLanguage || "auto",
+    aiConfirmBeforeLog: Boolean(current.aiConfirmBeforeLog),
+  };
+  if (["metric", "imperial"].includes(value.units)) next.units = value.units;
+  if (["en", "fr"].includes(value.appLanguage)) next.appLanguage = value.appLanguage;
+  if (["auto", "en", "fr"].includes(value.aiLanguage)) next.aiLanguage = value.aiLanguage;
+  if (typeof value.aiConfirmBeforeLog === "boolean") next.aiConfirmBeforeLog = value.aiConfirmBeforeLog;
+  return next;
+};
+
+const sanitizeNutritionTargets = (value) => {
+  if (!value || typeof value !== "object") return undefined;
+  const clamp = (number, min, max) => Math.min(max, Math.max(min, Math.round(Number(number) || 0)));
+  return {
+    calories: clamp(value.calories, 800, 10000),
+    protein: clamp(value.protein, 0, 1000),
+    carbs: clamp(value.carbs, 0, 1500),
+    fats: clamp(value.fats, 0, 600),
+  };
+};
+
 const checkAndResetDaily = async (userId) => {
   const today = new Date().toISOString().split("T")[0];
   const user = await User.findById(userId);
@@ -43,7 +91,7 @@ router.get("/:userId", async (req, res) => {
   try {
     await checkAndResetDaily(req.params.userId);
 
-    const user = await User.findById(req.params.userId).select("-password");
+    const user = await User.findById(req.params.userId).select(PRIVATE_FIELDS);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -57,10 +105,10 @@ router.get("/:userId", async (req, res) => {
 router.put("/:userId", async (req, res) => {
   try {
     // Whitelist: only allow safe profile fields to be updated
+    // Email is changed through /api/auth/change-email (it needs verification).
     const ALLOWED_FIELDS = [
       "name", "age", "weight", "height", "gender",
-      "activityLevel", "fitnessGoal", "goal",
-      "nutritionTargets", "selectedWorkoutPlan",
+      "activityLevel", "fitnessGoal", "goal", "selectedWorkoutPlan",
     ];
 
     const updates = {};
@@ -70,9 +118,38 @@ router.put("/:userId", async (req, res) => {
       }
     }
 
+    if (typeof updates.name === "string") {
+      updates.name = updates.name.trim().slice(0, 60);
+      if (!updates.name) delete updates.name;
+    }
+
+    if (req.body.nutritionTargets !== undefined) {
+      const targets = sanitizeNutritionTargets(req.body.nutritionTargets);
+      if (targets) updates.nutritionTargets = targets;
+    }
+
+    if (req.body.targetWeight !== undefined) {
+      updates.targetWeight = req.body.targetWeight === null || req.body.targetWeight === ""
+        ? null
+        : toPositiveNumber(req.body.targetWeight);
+      if (updates.targetWeight === undefined) delete updates.targetWeight;
+    }
+
+    if (req.body.dietaryPreferences !== undefined) {
+      const dietaryPreferences = sanitizeDietaryPreferences(req.body.dietaryPreferences);
+      if (dietaryPreferences) updates.dietaryPreferences = dietaryPreferences;
+    }
+
+    if (req.body.preferences !== undefined) {
+      const current = await User.findById(req.params.userId).select("preferences");
+      const preferences = sanitizePreferences(req.body.preferences, current?.preferences || {});
+      if (preferences) updates.preferences = preferences;
+    }
+
     const updatedUser = await User.findByIdAndUpdate(req.params.userId, updates, {
       new: true,
-    }).select("-password -resetPasswordToken -resetPasswordExpires");
+      runValidators: true,
+    }).select(PRIVATE_FIELDS);
 
     if (!updatedUser) return res.status(404).json({ message: "User not found" });
 

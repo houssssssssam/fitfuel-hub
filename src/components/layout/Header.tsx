@@ -15,10 +15,16 @@ export default function Header({ onMenuClick }: HeaderProps) {
   const [showScrollAwareTitle, setShowScrollAwareTitle] = useState(false);
 
   useEffect(() => {
-    const raw = localStorage.getItem("user");
-    if (raw) {
-      setUser(JSON.parse(raw));
-    }
+    const readUser = () => {
+      const raw = localStorage.getItem("user");
+      if (raw) {
+        setUser(JSON.parse(raw));
+      }
+    };
+    readUser();
+    // Profile edits (name, email) update the header without a reload.
+    window.addEventListener("userupdated", readUser);
+    return () => window.removeEventListener("userupdated", readUser);
   }, []);
 
   useEffect(() => {

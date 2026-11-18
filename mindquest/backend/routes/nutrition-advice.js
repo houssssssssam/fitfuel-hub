@@ -1,6 +1,7 @@
 const express = require("express");
 const Groq = require("groq-sdk");
 const User = require("../models/User");
+const { withAiPreferences } = require("../utils/aiContext");
 
 const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -329,7 +330,7 @@ Be specific to their actual numbers. If calories are 0, say they haven't logged 
         temperature: 0.4,
         messages: [
           { role: "system", content: "Expert nutritionist. Raw JSON only. No markdown." },
-          { role: "user", content: prompt },
+          { role: "user", content: withAiPreferences(prompt, user, { json: true }) },
         ],
       });
 

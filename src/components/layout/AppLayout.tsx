@@ -5,11 +5,13 @@ import Sidebar from "./Sidebar";
 import ChatBot from "../ChatBot";
 import PWAInstallPrompt from "../PWAInstallPrompt";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useSyncAppLanguage } from "@/lib/preferences";
 import KeyboardShortcutsModal from "../KeyboardShortcutsModal";
 
 const AppLayout = () => {
   const userStr = localStorage.getItem("user");
   const { showShortcutsModal, setShowShortcutsModal } = useKeyboardShortcuts();
+  useSyncAppLanguage();
   
   // Track inverse state: sidebarOpen = true means expanded.
   const [sidebarOpen, setSidebarOpen] = useState(

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { api } from "@/lib/api";
+import { fromDisplayWeight, toDisplayWeight, useUnits, weightUnit } from "@/lib/units";
 import { Plus, Calendar, Dumbbell, Trash2, Save, Clock, Pencil, TrendingUp, Trophy, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,9 @@ const detectMuscle = (name: string): string => {
 };
 
 const WorkoutAnalytics = ({ workouts }: { workouts: Workout[] }) => {
+  const units = useUnits();
+  const unit = weightUnit(units);
+  const show = (kg: number, decimals = 0) => toDisplayWeight(kg, units, decimals);
   const analytics = useMemo(() => {
     if (workouts.length === 0) return null;
 
@@ -71,7 +75,7 @@ const WorkoutAnalytics = ({ workouts }: { workouts: Workout[] }) => {
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .map((w) => ({
         date: new Date(w.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-        volume: w.totalVolume || 0,
+        volume: toDisplayWeight(w.totalVolume || 0, units, 0),
         name: w.name,
       }));
 
@@ -110,7 +114,7 @@ const WorkoutAnalytics = ({ workouts }: { workouts: Workout[] }) => {
     const topExercise = Object.entries(exFreq).sort(([, a], [, b]) => b - a)[0];
 
     return { totalSessions, avgVolume, volumeData, muscles, prs, topExercise };
-  }, [workouts]);
+  }, [workouts, units]);
 
   if (!analytics) return null;
 
@@ -140,7 +144,7 @@ const WorkoutAnalytics = ({ workouts }: { workouts: Workout[] }) => {
             </div>
             <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Avg Volume</span>
           </div>
-          <p className="text-2xl font-bold text-foreground">{analytics.avgVolume.toLocaleString()} <span className="text-sm text-muted-foreground">lbs</span></p>
+          <p className="text-2xl font-bold text-foreground">{show(analytics.avgVolume).toLocaleString()} <span className="text-sm text-muted-foreground">{unit}</span></p>
         </div>
 
         <div className="stat-card p-4">
@@ -188,7 +192,7 @@ const WorkoutAnalytics = ({ workouts }: { workouts: Workout[] }) => {
                   <YAxis stroke="rgba(255,255,255,0.3)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(val: number) => `${(val / 1000).toFixed(0)}k`} />
                   <Tooltip
                     contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "8px" }}
-                    formatter={(value: number) => [`${value.toLocaleString()} lbs`, "Volume"]}
+                    formatter={(value: number) => [`${value.toLocaleString()} ${unit}`, "Volume"]}
                   />
                   <Area type="monotone" dataKey="volume" stroke="#06b6d4" fillOpacity={1} fill="url(#colorVol)" strokeWidth={2.5} />
                 </AreaChart>
@@ -235,7 +239,7 @@ const WorkoutAnalytics = ({ workouts }: { workouts: Workout[] }) => {
                     <p className="text-xs text-muted-foreground">{new Date(pr.date).toLocaleDateString()}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-bold text-yellow-400">{pr.weight} lbs</p>
+                    <p className="text-sm font-bold text-yellow-400">{show(pr.weight, 1)} {unit}</p>
                     <p className="text-xs text-muted-foreground">{pr.reps} reps</p>
                   </div>
                 </div>
@@ -255,6 +259,8 @@ const WorkoutAnalytics = ({ workouts }: { workouts: Workout[] }) => {
 
 const Workouts = () => {
   const { t } = useTranslation();
+  const units = useUnits();
+  const unit = weightUnit(units);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
@@ -315,7 +321,8 @@ const Workouts = () => {
       name: exercise.name,
       sets: exercise.sets.map((set) => {
         const reps = Number(set.reps) || 0;
-        const weight = Number(set.weight) || 0;
+        // Typed in the user's unit, stored in kg.
+        const weight = Math.round(fromDisplayWeight(Number(set.weight) || 0, units) * 10) / 10;
         totalVolume += reps * weight;
         return { reps, weight };
       }),
@@ -348,7 +355,7 @@ const Workouts = () => {
         name: exercise.name,
         sets: exercise.sets.map((set) => ({
           reps: String(set.reps),
-          weight: String(set.weight),
+          weight: String(toDisplayWeight(set.weight, units)),
         })),
       })),
     });
@@ -481,7 +488,7 @@ const Workouts = () => {
                             }}
                             className="w-20 sm:w-24 bg-card border-border"
                           />
-                          <span className="text-sm text-muted-foreground">lbs</span>
+                          <span className="text-sm text-muted-foreground">{unit}</span>
                         </div>
                       ))}
 
@@ -536,7 +543,7 @@ const Workouts = () => {
 
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">
-                      {workout.totalVolume.toLocaleString()} lbs
+                      {toDisplayWeight(workout.totalVolume, units, 0).toLocaleString()} {unit}
                     </Badge>
 
                     <Button
@@ -591,7 +598,7 @@ const Workouts = () => {
                         <div className="flex gap-2 mt-1 flex-wrap">
                           {exercise.sets.map((set, index) => (
                             <span key={index} className="text-xs text-muted-foreground">
-                              {set.reps}×{set.weight}lbs
+                              {set.reps}×{toDisplayWeight(set.weight, units)}{unit}
                             </span>
                           ))}
                         </div>

@@ -2,6 +2,7 @@ const express = require("express");
 const Groq = require("groq-sdk");
 const MealPlan = require("../models/MealPlan");
 const User = require("../models/User");
+const { withAiPreferences } = require("../utils/aiContext");
 
 const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -392,7 +393,7 @@ Respond ONLY with raw JSON:
           content:
             "You are an elite sports nutritionist. Always respond with valid raw JSON only. No markdown.",
         },
-        { role: "user", content: prompt },
+        { role: "user", content: withAiPreferences(prompt, user, { json: true }) },
       ],
     });
 

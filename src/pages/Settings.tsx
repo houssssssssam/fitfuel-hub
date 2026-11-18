@@ -1,20 +1,69 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 import { useTheme } from "@/hooks/useTheme";
 import { Switch } from "@/components/ui/switch";
-import { Palette, Globe, Lock, Database, Info, Monitor, Moon, Sun, MonitorSmartphone, Dumbbell } from "lucide-react";
+import {
+  Bell,
+  Bot,
+  Database,
+  Download,
+  Dumbbell,
+  FileJson,
+  Globe,
+  Info,
+  Loader2,
+  Lock,
+  LogOut,
+  MessageSquareX,
+  Monitor,
+  Moon,
+  Palette,
+  Ruler,
+  Scale,
+  Sun,
+  Utensils,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { useNavigate } from "react-router-dom";
+import { getStoredUser } from "@/lib/auth";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { type UnitSystem, setUnitSystem, useUnits } from "@/lib/units";
+import { type UserPreferences, savePreferences } from "@/lib/preferences";
+import NotificationSettingsPanel from "@/components/settings/NotificationSettingsPanel";
+import {
+  type NutritionDay,
+  exportAllJSON,
+  exportFoodsCSV,
+  exportNutritionCSV,
+  exportWeightCSV,
+  exportWorkoutsCSV,
+} from "@/utils/exportData";
 
 const categories = [
   { id: "appearance", label: "appearance", icon: Palette },
   { id: "language", label: "languageRegion", icon: Globe },
+  { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "fuelbot", label: "FuelBot", icon: Bot },
   { id: "privacy", label: "privacySecurity", icon: Lock },
   { id: "data", label: "dataStorage", icon: Database },
   { id: "about", label: "about", icon: Info },
 ];
+
+type ExportProfile = {
+  foods?: NutritionDay["foods"];
+  dailyIntake?: { calories?: number; protein?: number; carbs?: number; fats?: number };
+  dailyWater?: number;
+  lastResetDate?: string;
+  workouts?: Parameters<typeof exportWorkoutsCSV>[0];
+  weightLogs?: Parameters<typeof exportWeightCSV>[0];
+  progressPhotos?: unknown[];
+  preferences?: Partial<UserPreferences>;
+  [key: string]: unknown;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  (error as { response?: { data?: { message?: string } } }).response?.data?.message || fallback;
 
 const SettingsToggle = ({ label, description, value, onChange }: any) => (
   <div className="flex items-center justify-between py-4 border-b border-border/50">
@@ -38,7 +87,21 @@ export default function Settings() {
   const { t, i18n: i18nInstance } = useTranslation();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
-  const [activeSection, setActiveSection] = useState("appearance");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedSection = searchParams.get("section");
+  const [activeSection, setActiveSectionState] = useState(
+    categories.some((cat) => cat.id === requestedSection) ? requestedSection! : "appearance",
+  );
+  const setActiveSection = (id: string) => {
+    setActiveSectionState(id);
+    setSearchParams(id === "appearance" ? {} : { section: id }, { replace: true });
+  };
+  const units = useUnits();
+  const [preferences, setPreferences] = useState<Partial<UserPreferences>>({});
+  const [exportProfile, setExportProfile] = useState<ExportProfile | null>(null);
+  const [exportHistory, setExportHistory] = useState<NutritionDay[]>([]);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   // State
   const [accentColor, setAccentColor] = useState(() => localStorage.getItem("accentColor") || "186 94% 42%");
@@ -51,6 +114,112 @@ export default function Settings() {
     i18nInstance.changeLanguage(code);
     localStorage.setItem("language", code);
     window.dispatchEvent(new Event("languagechange"));
+  };
+
+  // Server-side preferences (FuelBot behavior, units)
+  useEffect(() => {
+    const id = getStoredUser()?.id;
+    if (!id) return;
+    void api
+      .get<ExportProfile>(`/api/profile/${id}`)
+      .then((res) => setPreferences(res.data.preferences || {}))
+      .catch(() => undefined);
+  }, []);
+
+  const updatePreferences = async (changes: Partial<UserPreferences>) => {
+    const previous = preferences;
+    setPreferences({ ...preferences, ...changes });
+    try {
+      const saved = await savePreferences(changes);
+      if (saved) setPreferences(saved);
+    } catch {
+      setPreferences(previous);
+      toast.error("Couldn't save that setting");
+    }
+  };
+
+  const handleUnits = (system: UnitSystem) => {
+    setUnitSystem(system);
+    void updatePreferences({ units: system });
+  };
+
+  // Data & Storage: load everything once when the section opens.
+  const loadExportData = async () => {
+    const id = getStoredUser()?.id;
+    if (!id) return null;
+    setExportLoading(true);
+    try {
+      const [profileRes, historyRes] = await Promise.all([
+        api.get<ExportProfile>(`/api/profile/${id}`),
+        api.get<NutritionDay[]>(`/api/profile/${id}/history?days=90`),
+      ]);
+      const profileData = profileRes.data;
+      const todayDate = profileData.lastResetDate || new Date().toISOString().split("T")[0];
+      const todayEntry: NutritionDay = {
+        date: todayDate,
+        calories: profileData.dailyIntake?.calories || 0,
+        protein: profileData.dailyIntake?.protein || 0,
+        carbs: profileData.dailyIntake?.carbs || 0,
+        fats: profileData.dailyIntake?.fats || 0,
+        water: profileData.dailyWater || 0,
+        foods: profileData.foods || [],
+      };
+      const past = (historyRes.data || []).filter((day) => day.date !== todayDate);
+      const hasToday = (todayEntry.foods?.length || 0) > 0 || (todayEntry.calories || 0) > 0 || (todayEntry.water || 0) > 0;
+      const days = hasToday ? [...past, todayEntry] : past;
+      setExportProfile(profileData);
+      setExportHistory(days);
+      return { profile: profileData, days };
+    } catch {
+      toast.error("Couldn't load your data");
+      return null;
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === "data" && !exportProfile && !exportLoading) {
+      void loadExportData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection]);
+
+  const runExport = async (kind: "nutrition" | "foods" | "workouts" | "weight" | "all") => {
+    const loaded = exportProfile ? { profile: exportProfile, days: exportHistory } : await loadExportData();
+    if (!loaded) return;
+    const { profile: profileData, days } = loaded;
+    let count = 0;
+    if (kind === "nutrition") count = exportNutritionCSV(days);
+    if (kind === "foods") count = exportFoodsCSV(days);
+    if (kind === "workouts") count = exportWorkoutsCSV(profileData.workouts || []);
+    if (kind === "weight") count = exportWeightCSV(profileData.weightLogs || []);
+    if (kind === "all") {
+      exportAllJSON({ exportedAt: new Date().toISOString(), profile: profileData, nutritionHistory: days });
+      toast.success("Backup downloaded");
+      return;
+    }
+    toast.success(count === 0 ? "Downloaded (no entries yet)" : `Downloaded ${count} ${count === 1 ? "entry" : "entries"}`);
+  };
+
+  const handleClearChat = () => {
+    if (!confirm("Clear your FuelBot conversation on this device?")) return;
+    const id = getStoredUser()?.id ?? "guest";
+    localStorage.removeItem(`fuelbot_history_${id}`);
+    window.dispatchEvent(new Event("fuelbotcleared"));
+    toast.success("FuelBot chat cleared");
+  };
+
+  const handleLogoutOthers = async () => {
+    setBusyAction("logout-others");
+    try {
+      await api.post("/api/auth/logout-others");
+      toast.success("Signed out of all other devices");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Couldn't sign out other devices"));
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   // Appearance
@@ -74,7 +243,7 @@ export default function Settings() {
         currentPassword,
         newPassword
       });
-      toast.success("Password updated!");
+      toast.success("Password updated. Other devices were signed out.");
       setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Error changing password");
@@ -101,6 +270,8 @@ export default function Settings() {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
       await api.delete(`/api/profile/${user.id}/history`);
       toast.success("History cleared");
+      setExportProfile(null);
+      void loadExportData();
     } catch (err) {
       toast.error("Failed to clear history");
     }
@@ -178,6 +349,82 @@ export default function Settings() {
           </button>
         ))}
       </div>
+
+      <div>
+        <h3 className="text-sm font-medium mb-1 flex items-center gap-2"><Ruler className="h-4 w-4 text-primary" /> Units</h3>
+        <p className="text-xs text-muted-foreground mb-3">Used for body weight, height and lifting weights. Food stays in grams.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[
+            { id: "metric" as const, title: "Metric", example: "kg · cm" },
+            { id: "imperial" as const, title: "Imperial", example: "lbs · ft/in" },
+          ].map((option) => (
+            <button
+              key={option.id}
+              onClick={() => handleUnits(option.id)}
+              className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${units === option.id ? "border-primary bg-primary/10" : "border-border/50 bg-card hover:border-primary/50"}`}
+            >
+              <span className="font-medium text-foreground">{option.title}</span>
+              <span className="text-xs text-muted-foreground font-mono">{option.example}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderNotifications = () => (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <SectionHeader title="Notifications" description="Reminders that help you keep logging and stay on track." />
+      <NotificationSettingsPanel />
+    </div>
+  );
+
+  const renderFuelbot = () => (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <SectionHeader title="FuelBot" description="How your AI assistant answers and logs food." />
+
+      <div>
+        <h3 className="text-sm font-medium mb-1">Response language</h3>
+        <p className="text-xs text-muted-foreground mb-3">Also used by meal suggestions, the weekly plan and AI advice.</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {[
+            { id: "auto" as const, title: "Same as the app", detail: i18nInstance.language?.startsWith("fr") ? "Currently Français" : "Currently English" },
+            { id: "en" as const, title: "English", detail: "Always English" },
+            { id: "fr" as const, title: "Français", detail: "Toujours en français" },
+          ].map((option) => (
+            <button
+              key={option.id}
+              onClick={() => void updatePreferences({ aiLanguage: option.id })}
+              className={`text-left p-4 rounded-xl border-2 transition-all ${(preferences.aiLanguage || "auto") === option.id ? "border-primary bg-primary/10" : "border-border/50 bg-card hover:border-primary/50"}`}
+            >
+              <p className="font-medium text-foreground text-sm">{option.title}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{option.detail}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-card border border-border/50 rounded-xl px-5">
+        <SettingsToggle
+          label="Ask before logging food"
+          description="FuelBot shows what it would log and waits for you to confirm, instead of adding it right away."
+          value={Boolean(preferences.aiConfirmBeforeLog)}
+          onChange={(value: boolean) => void updatePreferences({ aiConfirmBeforeLog: value })}
+        />
+        <div className="flex items-center justify-between py-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">Clear chat history</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Deletes the FuelBot conversation saved on this device. Logged foods stay.</p>
+          </div>
+          <button onClick={handleClearChat} className="flex items-center gap-2 text-sm font-medium text-destructive bg-destructive/10 hover:bg-destructive/20 px-3 py-2 rounded-lg transition-colors shrink-0">
+            <MessageSquareX className="h-4 w-4" /> Clear
+          </button>
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Your diet and allergies are set on the <button onClick={() => navigate("/profile")} className="text-primary hover:underline">Profile page</button>.
+      </p>
     </div>
   );
 
@@ -191,6 +438,22 @@ export default function Settings() {
         <input type="password" placeholder="New Password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} className="w-full bg-background border border-border/50 rounded-lg h-12 px-4 focus:outline-none focus:ring-2 focus:ring-primary/50 text-white" />
         <input type="password" placeholder="Confirm New Password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} className="w-full bg-background border border-border/50 rounded-lg h-12 px-4 focus:outline-none focus:ring-2 focus:ring-primary/50 text-white" />
         <button onClick={handleChangePassword} className="bg-primary text-primary-foreground px-6 py-2.5 rounded-lg font-medium hover:bg-primary/90 transition-colors w-full sm:w-auto">Update Password</button>
+        <p className="text-xs text-muted-foreground">Changing your password also signs you out on your other devices.</p>
+      </div>
+
+      <div className="bg-card border border-border/50 rounded-xl p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex-1">
+          <h3 className="font-semibold text-foreground">Sign out of other devices</h3>
+          <p className="text-sm text-muted-foreground mt-1">Lost a phone or used a shared computer? Every other session ends within 15 minutes. You stay signed in here.</p>
+        </div>
+        <button
+          onClick={() => void handleLogoutOthers()}
+          disabled={busyAction === "logout-others"}
+          className="flex items-center justify-center gap-2 border border-border px-5 py-2.5 rounded-lg font-medium text-foreground hover:bg-secondary transition-colors shrink-0 disabled:opacity-60"
+        >
+          {busyAction === "logout-others" ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+          Sign out others
+        </button>
       </div>
 
       <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6 space-y-4">
@@ -204,43 +467,46 @@ export default function Settings() {
     </div>
   );
 
-  const renderData = () => (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <SectionHeader title={t('dataStorage')} description="Manage your data footprint and export your history." />
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button className="flex items-center gap-3 p-4 bg-card border border-border/50 rounded-xl text-left hover:border-primary/50 transition-colors group">
-          <Database className="h-6 w-6 text-cyan-500 group-hover:scale-110 transition-transform" />
-          <div>
-            <div className="font-medium text-white">Export Nutrition (CSV)</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Download your full history</div>
-          </div>
-        </button>
-        <button className="flex items-center gap-3 p-4 bg-card border border-border/50 rounded-xl text-left hover:border-primary/50 transition-colors group">
-          <Dumbbell className="h-6 w-6 text-teal-500 group-hover:scale-110 transition-transform" />
-          <div>
-            <div className="font-medium text-white">Export Workouts (CSV)</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Save your training logs</div>
-          </div>
-        </button>
-      </div>
+  const renderData = () => {
+    const foodCount = exportHistory.reduce((sum, day) => sum + (day.foods?.length || 0), 0);
+    const exportsList = [
+      { kind: "nutrition" as const, icon: Database, title: "Daily nutrition", detail: `${exportHistory.length} days of totals · CSV`, color: "text-cyan-500" },
+      { kind: "foods" as const, icon: Utensils, title: "Food log", detail: `${foodCount} foods, one per row · CSV`, color: "text-green-500" },
+      { kind: "workouts" as const, icon: Dumbbell, title: "Workouts", detail: `${exportProfile?.workouts?.length || 0} workouts, one row per set · CSV`, color: "text-teal-500" },
+      { kind: "weight" as const, icon: Scale, title: "Body weight", detail: `${exportProfile?.weightLogs?.length || 0} entries · CSV`, color: "text-yellow-500" },
+      { kind: "all" as const, icon: FileJson, title: "Full backup", detail: "Everything in one file · JSON", color: "text-purple-500" },
+    ];
 
-      <div className="bg-card border border-border/50 rounded-xl p-6 mt-6">
-         <h3 className="font-medium mb-4 text-white">Storage Usage</h3>
-         <div className="space-y-4">
-           <div className="flex justify-between text-sm"><span>Profile data</span><span className="text-muted-foreground font-mono">~2KB</span></div>
-           <div className="flex justify-between text-sm"><span>Food logs</span><span className="text-muted-foreground font-mono">Active</span></div>
-           <div className="h-2.5 bg-secondary rounded-full overflow-hidden">
-             <div className="h-full bg-gradient-to-r from-primary to-teal-500 w-[20%] rounded-full shadow-[0_0_10px_rgba(6,182,212,0.4)]"></div>
-           </div>
-         </div>
-      </div>
+    return (
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <SectionHeader title={t('dataStorage')} description="Download a copy of your data or clean it up." />
 
-      <div className="pt-4 flex">
-        <button onClick={handleClearHistory} className="text-destructive text-sm font-medium hover:underline bg-destructive/10 px-4 py-2 rounded-lg transition-colors hover:bg-destructive/20 ml-auto">Clear all nutrition history</button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {exportsList.map((item) => (
+            <button
+              key={item.kind}
+              onClick={() => void runExport(item.kind)}
+              disabled={exportLoading}
+              className="flex items-center gap-3 p-4 bg-card border border-border/50 rounded-xl text-left hover:border-primary/50 transition-colors group disabled:opacity-60"
+            >
+              <item.icon className={`h-6 w-6 ${item.color} group-hover:scale-110 transition-transform shrink-0`} />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-foreground">{item.title}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">{exportLoading ? "Loading…" : item.detail}</div>
+              </div>
+              <Download className="h-4 w-4 text-muted-foreground group-hover:text-foreground shrink-0" />
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground -mt-4">Nutrition history covers the last 90 days, which is how long FitFuel Hub keeps it.</p>
+
+        <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-3 border-t border-border/50">
+          <p className="text-sm text-muted-foreground flex-1 pt-4">Delete your saved daily nutrition history. Today's log, workouts and weight stay.</p>
+          <button onClick={handleClearHistory} className="text-destructive text-sm font-medium bg-destructive/10 px-4 py-2 rounded-lg transition-colors hover:bg-destructive/20 sm:mt-4">Clear nutrition history</button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderAbout = () => (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -297,6 +563,8 @@ export default function Settings() {
         <div className="max-w-2xl">
           {activeSection === "appearance" && renderAppearance()}
           {activeSection === "language" && renderLanguage()}
+          {activeSection === "notifications" && renderNotifications()}
+          {activeSection === "fuelbot" && renderFuelbot()}
           {activeSection === "privacy" && renderPrivacy()}
           {activeSection === "data" && renderData()}
           {activeSection === "about" && renderAbout()}

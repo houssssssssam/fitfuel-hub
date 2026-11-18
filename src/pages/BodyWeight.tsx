@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { ArrowDown, ArrowRight, ArrowUp, Calendar, Info, Loader2, Plus, Scale, Target, Trash2, TrendingDown, TrendingUp } from "lucide-react";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
+import { fromDisplayWeight, toDisplayWeight, useUnits, weightUnit } from "@/lib/units";
 
 export default function BodyWeight() {
   const { t } = useTranslation();
@@ -18,7 +19,10 @@ export default function BodyWeight() {
   const [weight, setWeight] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [note, setNote] = useState("");
-  const [goalWeight, setGoalWeight] = useState<number | null>(null);
+  const units = useUnits();
+  const unit = weightUnit(units);
+  const display = (kg: number) => toDisplayWeight(kg, units);
+  const [goalInput, setGoalInput] = useState("");
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["profile", userId],
@@ -31,7 +35,8 @@ export default function BodyWeight() {
 
   const addLog = useMutation({
     mutationFn: async () => {
-      await api.post(`/api/profile/${userId}/weight`, { weight: Number(weight), date, note });
+      const kg = Math.round(fromDisplayWeight(Number(weight), units) * 10) / 10;
+      await api.post(`/api/profile/${userId}/weight`, { weight: kg, date, note });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile", userId] });
@@ -41,6 +46,29 @@ export default function BodyWeight() {
     },
     onError: () => toast.error("Failed to log weight"),
   });
+
+  // Target weight is saved on the profile (also editable on the Profile page).
+  useEffect(() => {
+    setGoalInput(profile?.targetWeight ? String(toDisplayWeight(profile.targetWeight, units)) : "");
+  }, [profile?.targetWeight, units]);
+
+  const saveGoal = useMutation({
+    mutationFn: async (kg: number | null) => {
+      await api.put(`/api/profile/${userId}`, { targetWeight: kg });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["profile", userId] });
+      toast.success("Target weight saved");
+    },
+    onError: () => toast.error("Couldn't save target weight"),
+  });
+
+  const commitGoal = () => {
+    const value = Number(goalInput.replace(",", "."));
+    const kg = goalInput.trim() && value > 0 ? Math.round(fromDisplayWeight(value, units) * 10) / 10 : null;
+    if (kg === (profile?.targetWeight ?? null)) return;
+    saveGoal.mutate(kg);
+  };
 
   const deleteLog = useMutation({
     mutationFn: async (logId: string) => {
@@ -66,6 +94,8 @@ export default function BodyWeight() {
   const latestWeight = sortedLogs.length > 0 ? sortedLogs[sortedLogs.length - 1].weight : profile?.weight || 0;
   const startingWeight = sortedLogs.length > 0 ? sortedLogs[0].weight : profile?.weight || 0;
   const totalChange = latestWeight - startingWeight;
+  const goalWeight: number | null = profile?.targetWeight ?? null;
+  const chartData = sortedLogs.map((log) => ({ ...log, weight: display(log.weight) }));
 
   // Trend logic based on last 7 days
   const sevenDaysAgo = new Date();
@@ -108,7 +138,7 @@ export default function BodyWeight() {
             <Scale className="h-5 w-5 text-primary" />
             <span className="font-semibold text-sm uppercase tracking-wider">{t("currentWeight")}</span>
           </div>
-          <div className="text-4xl font-bold font-display">{latestWeight} <span className="text-xl text-muted-foreground">kg</span></div>
+          <div className="text-4xl font-bold font-display">{display(latestWeight)} <span className="text-xl text-muted-foreground">{unit}</span></div>
         </div>
 
         <div className="stat-card">
@@ -116,7 +146,7 @@ export default function BodyWeight() {
             <Calendar className="h-5 w-5 text-blue-500" />
             <span className="font-semibold text-sm uppercase tracking-wider">{t("startingWeight")}</span>
           </div>
-          <div className="text-4xl font-bold font-display">{startingWeight} <span className="text-xl text-muted-foreground">kg</span></div>
+          <div className="text-4xl font-bold font-display">{display(startingWeight)} <span className="text-xl text-muted-foreground">{unit}</span></div>
         </div>
 
         <div className="stat-card">
@@ -126,7 +156,7 @@ export default function BodyWeight() {
           </div>
           <div className="flex items-end gap-2">
             <div className={`text-4xl font-bold font-display ${totalChange < 0 ? 'text-green-500' : totalChange > 0 ? 'text-red-500' : ''}`}>
-              {totalChange > 0 ? '+' : ''}{totalChange.toFixed(1)} <span className="text-xl text-muted-foreground">kg</span>
+              {totalChange > 0 ? '+' : ''}{display(totalChange).toFixed(1)} <span className="text-xl text-muted-foreground">{unit}</span>
             </div>
           </div>
         </div>
@@ -153,7 +183,7 @@ export default function BodyWeight() {
           {sortedLogs.length > 1 ? (
             <div className="flex-1 h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={sortedLogs} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorWeight" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
@@ -197,14 +227,14 @@ export default function BodyWeight() {
             <h3 className="text-xl font-bold text-foreground mb-4">{t("logWeight")}</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label>Weight (kg)</Label>
+                <Label>Weight ({unit})</Label>
                 <Input 
                   type="number" 
                   step="0.1" 
                   required
                   value={weight} 
                   onChange={e => setWeight(e.target.value)}
-                  placeholder="e.g. 72.5"
+                  placeholder={units === "imperial" ? "e.g. 160" : "e.g. 72.5"}
                   className="bg-secondary/50"
                 />
               </div>
@@ -241,12 +271,14 @@ export default function BodyWeight() {
               <div className="space-y-2">
                 <Label>Target Goal Weight</Label>
                 <div className="flex gap-2">
-                  <Input 
-                    type="number" 
+                  <Input
+                    type="number"
                     step="0.1"
-                    value={goalWeight || ""}
-                    onChange={e => setGoalWeight(Number(e.target.value))}
-                    placeholder="e.g. 68.0"
+                    value={goalInput}
+                    onChange={e => setGoalInput(e.target.value)}
+                    onBlur={commitGoal}
+                    onKeyDown={e => e.key === "Enter" && commitGoal()}
+                    placeholder={units === "imperial" ? `e.g. 150 (${unit})` : `e.g. 68.0 (${unit})`}
                     className="bg-secondary/50"
                   />
                 </div>
@@ -254,7 +286,7 @@ export default function BodyWeight() {
               {goalWeight && (
                 <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 flex flex-col items-center text-center">
                   <span className="text-muted-foreground text-sm uppercase font-bold tracking-wider mb-1">Distance to Goal</span>
-                  <span className="text-2xl font-bold text-primary font-display">{Math.abs(latestWeight - goalWeight).toFixed(1)} kg</span>
+                  <span className="text-2xl font-bold text-primary font-display">{display(Math.abs(latestWeight - goalWeight)).toFixed(1)} {unit}</span>
                   <span className="text-sm text-muted-foreground mt-1">
                     {goalWeight < latestWeight ? "to lose!" : "to gain!"} Keep pushing.
                   </span>
@@ -274,7 +306,7 @@ export default function BodyWeight() {
               <thead>
                 <tr className="border-b border-border">
                   <th className="py-3 px-4 font-semibold text-muted-foreground uppercase text-xs tracking-wider">Date</th>
-                  <th className="py-3 px-4 font-semibold text-muted-foreground uppercase text-xs tracking-wider">Weight (kg)</th>
+                  <th className="py-3 px-4 font-semibold text-muted-foreground uppercase text-xs tracking-wider">Weight ({unit})</th>
                   <th className="py-3 px-4 font-semibold text-muted-foreground uppercase text-xs tracking-wider">Change</th>
                   <th className="py-3 px-4 font-semibold text-muted-foreground uppercase text-xs tracking-wider hidden sm:table-cell">Note</th>
                   <th className="py-3 px-4 font-semibold text-muted-foreground uppercase text-xs tracking-wider text-right">Action</th>
@@ -283,12 +315,12 @@ export default function BodyWeight() {
               <tbody>
                 {[...sortedLogs].reverse().map((log, i, arr) => {
                   const prevLog = arr[i + 1]; // Previous chronological element is the NEXT element in the reversed array
-                  const diff = prevLog ? (log.weight - prevLog.weight).toFixed(1) : "0.0";
+                  const diff = prevLog ? display(log.weight - prevLog.weight).toFixed(1) : "0.0";
                   const diffNum = Number(diff);
                   return (
                     <tr key={log._id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors group">
                       <td className="py-4 px-4 whitespace-nowrap">{new Date(log.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                      <td className="py-4 px-4 font-bold text-foreground">{log.weight}</td>
+                      <td className="py-4 px-4 font-bold text-foreground">{display(log.weight)}</td>
                       <td className="py-4 px-4">
                         {diffNum !== 0 ? (
                           <span className={`flex items-center gap-1 text-sm font-medium ${diffNum < 0 ? 'text-green-500' : 'text-red-500'}`}>

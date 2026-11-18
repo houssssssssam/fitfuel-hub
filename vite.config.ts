@@ -38,6 +38,9 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
+      workbox: {
+        importScripts: ['push-handler.js'],
+      },
       manifest: {
         name: 'FitFuel Hub',
         short_name: 'FitFuel',

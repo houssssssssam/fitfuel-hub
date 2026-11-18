@@ -1,6 +1,7 @@
 const express = require("express");
 const Groq = require("groq-sdk");
 const User = require("../models/User");
+const { withAiPreferences } = require("../utils/aiContext");
 
 const router = express.Router();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
@@ -58,7 +59,7 @@ Respond ONLY with a raw JSON array, no markdown, no backticks, no explanation:
           role: "system",
           content: "You are a sports nutritionist. Always respond with valid raw JSON only. No markdown, no backticks, no extra text.",
         },
-        { role: "user", content: prompt },
+        { role: "user", content: withAiPreferences(prompt, user, { json: true }) },
       ],
     });
 
@@ -77,6 +78,7 @@ Respond ONLY with a raw JSON array, no markdown, no backticks, no explanation:
 router.post("/details", async (req, res) => {
   try {
     const { name, description, foods } = req.body;
+    const user = await User.findById(req.userId).select("dietaryPreferences preferences");
 
     const prompt = `You are a professional chef. Give detailed cooking instructions for this meal:
 
@@ -110,7 +112,7 @@ Respond ONLY with raw JSON, no markdown, no backticks:
           role: "system",
           content: "You are a professional chef. Always respond with valid raw JSON only. No markdown, no backticks.",
         },
-        { role: "user", content: prompt },
+        { role: "user", content: withAiPreferences(prompt, user, { json: true }) },
       ],
     });
 
@@ -206,7 +208,7 @@ Respond ONLY with raw JSON:
           role: "system",
           content: "You are an elite sports nutritionist. Always respond with valid raw JSON only. Absolutely no markdown or explanatory text.",
         },
-        { role: "user", content: prompt },
+        { role: "user", content: withAiPreferences(prompt, user, { json: true }) },
       ],
     });
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { toDisplayWeight, useUnits, weightUnit } from "@/lib/units";
 import {
   AlertTriangle,
   Award,
@@ -176,6 +177,7 @@ const impactTone = (impact: Recommendation["impact"]): string => {
 };
 
 const NutritionAdvice = () => {
+  const units = useUnits();
   const { t } = useTranslation();
   const [advice, setAdvice] = useState<NutritionAdviceResponse | null>(null);
   const [state, setState] = useState<LoadState>("loading");
@@ -508,7 +510,7 @@ const NutritionAdvice = () => {
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Weight Trend</p>
                 <p className="mt-1 text-lg font-semibold text-foreground">
                   {realData.weightTrend > 0 ? "+" : ""}
-                  {realData.weightTrend.toFixed(1)}kg
+                  {toDisplayWeight(realData.weightTrend, units).toFixed(1)} {weightUnit(units)}
                 </p>
               </div>
               {realData.weightTrend > 0 ? (

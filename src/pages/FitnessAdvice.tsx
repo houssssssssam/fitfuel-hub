@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { toDisplayWeight, useUnits, weightUnit } from "@/lib/units";
 import {
   Activity,
   AlertTriangle,
@@ -175,6 +176,8 @@ const impactTone = (impact: Recommendation["impact"]): string => {
 // ── Main Component ───────────────────────────────────────────────────────────
 
 const FitnessAdvice = () => {
+  const units = useUnits();
+  const unit = weightUnit(units);
   const [advice, setAdvice] = useState<FitnessAdviceResponse | null>(null);
   const [state, setState] = useState<LoadState>("loading");
   const [refreshing, setRefreshing] = useState(false);
@@ -403,8 +406,8 @@ const FitnessAdvice = () => {
         <StatTile
           icon={<Flame className="h-5 w-5 text-orange-400" />}
           label="Avg Volume"
-          value={`${realData.avgVolume.toLocaleString()}`}
-          helper="lbs per session"
+          value={`${toDisplayWeight(realData.avgVolume, units, 0).toLocaleString()}`}
+          helper={`${unit} per session`}
         />
         <StatTile
           icon={<Trophy className="h-5 w-5 text-yellow-400" />}
@@ -432,7 +435,7 @@ const FitnessAdvice = () => {
           {(realData.volumeHistory?.length || 0) > 1 ? (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={realData.volumeHistory}>
+                <AreaChart data={realData.volumeHistory.map((point) => ({ ...point, volume: toDisplayWeight(point.volume, units, 0) }))}>
                   <defs>
                     <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
@@ -461,7 +464,7 @@ const FitnessAdvice = () => {
                       border: "1px solid rgba(255,255,255,0.08)",
                       borderRadius: "12px",
                     }}
-                    formatter={(value: number) => [`${value.toLocaleString()} lbs`, "Volume"]}
+                    formatter={(value: number) => [`${value.toLocaleString()} ${unit}`, "Volume"]}
                     labelFormatter={(label: string) => `Date: ${label}`}
                   />
                   <Area
@@ -512,7 +515,7 @@ const FitnessAdvice = () => {
                   >
                     <span className="text-sm font-medium text-foreground capitalize">{pr.exercise}</span>
                     <span className="text-sm font-bold text-yellow-400">
-                      {pr.weight} lbs × {pr.reps}
+                      {toDisplayWeight(pr.weight, units)} {unit} × {pr.reps}
                     </span>
                   </div>
                 ))}
