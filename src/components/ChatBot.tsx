@@ -541,10 +541,7 @@ export default function ChatBot() {
     messageImageUrlsRef.current.clear();
   };
 
-  const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  const attachImageFile = async (file: File) => {
     clearSelectedImage();
     setIsPreparingImage(true);
 
@@ -564,6 +561,27 @@ export default function ChatBot() {
     } finally {
       setIsPreparingImage(false);
     }
+  };
+
+  const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await attachImageFile(file);
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (isTyping || isPreparingImage) return;
+
+    const imageItem = Array.from(event.clipboardData?.items ?? []).find(
+      (item) => item.kind === "file" && item.type.startsWith("image/"),
+    );
+    const file = imageItem?.getAsFile();
+
+    // Only intercept image pastes; plain text keeps the default behavior.
+    if (!file) return;
+
+    event.preventDefault();
+    void attachImageFile(file).then(() => textareaRef.current?.focus());
   };
 
   const sendMessage = async (content: string) => {
@@ -909,7 +927,8 @@ export default function ChatBot() {
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask FuelBot or attach a photo..."
+              onPaste={handlePaste}
+              placeholder="Ask FuelBot, attach or paste a photo..."
               className="flex-1 max-h-[80px] min-h-[40px] bg-transparent resize-none py-2.5 px-3 focus:outline-none text-sm leading-tight text-foreground disabled:opacity-50 scrollbar-thin scrollbar-thumb-white/10"
               rows={1}
             />
