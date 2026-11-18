@@ -67,11 +67,12 @@ const callGeminiVision = async (messages) => {
   throw lastError;
 };
 const MAX_VISION_UPLOAD_BYTES = Math.floor(2.8 * 1024 * 1024);
-const MAX_GROQ_BASE64_BYTES = 4 * 1024 * 1024;
+const MAX_VISION_IMAGES = 4;
+const MAX_VISION_TOTAL_BASE64_BYTES = 16 * 1024 * 1024;
 
 const visionUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_VISION_UPLOAD_BYTES },
+  limits: { fileSize: MAX_VISION_UPLOAD_BYTES, files: MAX_VISION_IMAGES },
   fileFilter: (req, file, cb) => {
     const allowedMimeTypes = /^image\/(jpeg|jpg|png|webp|gif)$/i;
     if (allowedMimeTypes.test(file.mimetype)) {
@@ -230,7 +231,10 @@ const parseOptionalJson = (value) => {
 };
 
 const runVisionUpload = (req, res) => new Promise((resolve, reject) => {
-  visionUpload.single("image")(req, res, (error) => {
+  visionUpload.fields([
+    { name: "images", maxCount: MAX_VISION_IMAGES },
+    { name: "image", maxCount: 1 },
+  ])(req, res, (error) => {
     if (error) {
       reject(error);
       return;
@@ -306,15 +310,7 @@ const analyzeCurrentStatus = (intake, targets) => {
   };
 };
 
-const applyFoodLogToUser = async (user, today, parsed) => {
-  const normalizedFood = normalizeFoodLog(parsed?.food);
-
-  if (!normalizedFood) {
-    return {
-      error: "I couldn't calculate that food entry clearly enough. Please include the food and quantity so I can log it accurately.",
-    };
-  }
-
+const addNormalizedFoodToUser = (user, normalizedFood) => {
   user.foods.push(normalizedFood);
   pushRecentFood(user, {
     name: normalizedFood.name,
@@ -332,15 +328,37 @@ const applyFoodLogToUser = async (user, today, parsed) => {
   user.dailyIntake.protein += normalizedFood.protein;
   user.dailyIntake.carbs += normalizedFood.carbs;
   user.dailyIntake.fats += normalizedFood.fats;
+};
+
+const applyFoodLogToUser = async (user, today, parsed) => {
+  const rawFoods = Array.isArray(parsed?.foods) && parsed.foods.length > 0
+    ? parsed.foods
+    : [parsed?.food];
+  const normalizedFoods = rawFoods.map(normalizeFoodLog).filter(Boolean);
+
+  if (normalizedFoods.length === 0) {
+    return {
+      error: "I couldn't calculate that food entry clearly enough. Please include the food and quantity so I can log it accurately.",
+    };
+  }
+
+  normalizedFoods.forEach((food) => addNormalizedFoodToUser(user, food));
   updateLoggingStreak(user, today);
 
   await user.save();
 
+  const fallbackReply = normalizedFoods.length === 1
+    ? buildFallbackFoodLogMessage(normalizedFoods[0])
+    : `Logged ${normalizedFoods.length} items: ${normalizedFoods
+      .map((food) => `**${food.quantity}${food.unit} ${food.name}**`)
+      .join(", ")}.`;
+
   return {
     reply: typeof parsed?.message === "string" && parsed.message.trim()
       ? parsed.message.trim()
-      : buildFallbackFoodLogMessage(normalizedFood),
-    foodLogged: normalizedFood,
+      : fallbackReply,
+    foodLogged: normalizedFoods[0],
+    foodsLogged: normalizedFoods,
     updatedIntake: user.dailyIntake,
   };
 };
@@ -350,6 +368,13 @@ const getVisionErrorPayload = (error) => {
     return {
       status: 413,
       message: "Image is too large. Please use a photo under 3MB.",
+    };
+  }
+
+  if (error instanceof multer.MulterError && (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_UNEXPECTED_FILE")) {
+    return {
+      status: 400,
+      message: `You can attach up to ${MAX_VISION_IMAGES} images per message.`,
     };
   }
 
@@ -535,6 +560,7 @@ Dairy: Whole milk 61/3.2/4.8/3.3 | Cheddar 403/25/1.3/33
           reply: foodLogResult.reply,
           type: "FOOD_LOG",
           foodLogged: foodLogResult.foodLogged,
+          foodsLogged: foodLogResult.foodsLogged,
           updatedIntake: foodLogResult.updatedIntake,
         });
       }
@@ -561,8 +587,8 @@ router.post("/vision", async (req, res) => {
       return res.status(400).json({ message: "User ID is required" });
     }
 
-    const imageFile = req.file;
-    if (!imageFile) {
+    const imageFiles = [...(req.files?.images || []), ...(req.files?.image || [])].slice(0, MAX_VISION_IMAGES);
+    if (imageFiles.length === 0) {
       return res.status(400).json({ message: "No image provided" });
     }
 
@@ -581,13 +607,18 @@ router.post("/vision", async (req, res) => {
     const recentFoods = (user.foods || []).slice(-5).map((food) => food.name).join(", ") || "none";
     const currentHour = new Date().getHours();
     const userContext = parseOptionalJson(req.body?.userContext);
-    const base64Image = imageFile.buffer.toString("base64");
+    const imageParts = imageFiles.map((file) => ({
+      type: "image_url",
+      image_url: { url: `data:${file.mimetype};base64,${file.buffer.toString("base64")}` },
+    }));
+    const totalImageBytes = imageParts.reduce((sum, part) => sum + part.image_url.url.length, 0);
 
-    if (Buffer.byteLength(base64Image, "utf8") > MAX_GROQ_BASE64_BYTES) {
+    if (totalImageBytes > MAX_VISION_TOTAL_BASE64_BYTES) {
       return res.status(413).json({
-        message: "Image is too large. Please use a photo under 3MB.",
+        message: "These images are too large together. Please send fewer or smaller photos.",
       });
     }
+    const imageCount = imageFiles.length;
 
     const systemPrompt = `You are FuelBot, the fitness and nutrition AI assistant inside FitFuel Hub with image understanding.
 
@@ -610,6 +641,9 @@ router.post("/vision", async (req, res) => {
 ## OPTIONAL CLIENT CONTEXT
 ${userContext ? JSON.stringify(userContext) : "No additional client context provided"}
 
+## IMAGES IN THIS MESSAGE
+The user attached ${imageCount} image${imageCount > 1 ? "s" : ""}.${imageCount > 1 ? " Refer to them as Image 1, Image 2, etc. in the order given. Treat them together (for example a meal plus its nutrition label, or several dishes) unless the user asks about one specifically." : ""}
+
 ## VISION TASKS
 - Meal photos: identify likely foods, explain uncertainty, estimate calories and macros per item and total, and mention portion assumptions.
 - Nutrition labels: prioritize printed numbers over estimates and extract servings, calories, protein, carbs, fats, sugar, fiber, and sodium when visible.
@@ -617,20 +651,22 @@ ${userContext ? JSON.stringify(userContext) : "No additional client context prov
 - General image questions: answer directly and clearly.
 
 ## FOOD LOGGING
-If the user clearly asks you to log food from the image, respond with ONLY valid JSON and no markdown using this schema:
+If the user clearly asks you to log food from the image(s), respond with ONLY valid JSON and no markdown using this schema. Put one entry in "foods" per distinct food item to log (a single dish is one entry; separate dishes across images are separate entries; never log the same food twice when one image is just its nutrition label):
 {
   "type": "FOOD_LOG",
   "message": "Logged! Added **[quantity][unit] [food name]** to your [meal] ([calories] cal, [protein]g protein).",
-  "food": {
-    "name": "exact food name",
-    "quantity": 100,
-    "unit": "g",
-    "mealType": "breakfast",
-    "calories": 165,
-    "protein": 31,
-    "carbs": 0,
-    "fats": 4
-  }
+  "foods": [
+    {
+      "name": "exact food name",
+      "quantity": 100,
+      "unit": "g",
+      "mealType": "breakfast",
+      "calories": 165,
+      "protein": 31,
+      "carbs": 0,
+      "fats": 4
+    }
+  ]
 }
 
 ## RESPONSE RULES
@@ -648,14 +684,12 @@ If the user clearly asks you to log food from the image, respond with ONLY valid
         content: [
           {
             type: "text",
-            text: (req.body?.message || "").trim() || "What's in this image and how does it fit my goals?",
+            text: (req.body?.message || "").trim()
+              || (imageCount > 1
+                ? "What's in these images and how do they fit my goals?"
+                : "What's in this image and how does it fit my goals?"),
           },
-          {
-            type: "image_url",
-            image_url: {
-              url: `data:${imageFile.mimetype};base64,${base64Image}`,
-            },
-          },
+          ...imageParts,
         ],
       },
     ]);
@@ -664,7 +698,7 @@ If the user clearly asks you to log food from the image, respond with ONLY valid
     try {
       const parsed = JSON.parse(jsonReply);
 
-      if (parsed.type === "FOOD_LOG" && parsed.food) {
+      if (parsed.type === "FOOD_LOG" && (parsed.food || Array.isArray(parsed.foods))) {
         const foodLogResult = await applyFoodLogToUser(user, today, parsed);
 
         if (foodLogResult.error) {
@@ -680,6 +714,7 @@ If the user clearly asks you to log food from the image, respond with ONLY valid
           type: "FOOD_LOG",
           hasImage: true,
           foodLogged: foodLogResult.foodLogged,
+          foodsLogged: foodLogResult.foodsLogged,
           updatedIntake: foodLogResult.updatedIntake,
         });
       }

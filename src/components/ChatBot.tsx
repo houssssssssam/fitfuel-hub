@@ -23,8 +23,15 @@ interface Message {
   content: string;
   type?: ChatMessageType;
   foodLogged?: FoodLogged | null;
-  imageUrl?: string | null;
+  foodsLogged?: FoodLogged[];
+  imageUrls?: string[];
 }
+
+type Attachment = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
 
 type UserStats = {
   caloriesRemaining: number;
@@ -61,6 +68,7 @@ type ChatResponse = {
   reply?: string;
   type?: ChatMessageType;
   foodLogged?: FoodLogged | null;
+  foodsLogged?: FoodLogged[] | null;
   updatedIntake?: {
     calories: number;
     protein: number;
@@ -74,7 +82,7 @@ const FALLBACK_WELCOME_MESSAGE: Message = {
   content: "Hey! I'm FuelBot 🤖 How can I help?",
   type: "text",
   foodLogged: null,
-  imageUrl: null,
+  imageUrls: [],
 };
 
 const getStoredUser = (): StoredUser | null => {
@@ -126,7 +134,12 @@ const getStoredMessages = (): Message[] => {
           content: entry.content,
           type: entry.type === "FOOD_LOG" ? "FOOD_LOG" : "text",
           foodLogged: entry.role === "assistant" && isFoodLogged(entry.foodLogged) ? entry.foodLogged : null,
-          imageUrl: typeof entry.imageUrl === "string" && entry.imageUrl.trim() ? entry.imageUrl : null,
+          foodsLogged: entry.role === "assistant" && Array.isArray(entry.foodsLogged)
+            ? entry.foodsLogged.filter(isFoodLogged)
+            : [],
+          imageUrls: (Array.isArray(entry.imageUrls) ? entry.imageUrls : [entry.imageUrl]).filter(
+            (url: unknown): url is string => typeof url === "string" && url.trim() !== "" && !url.startsWith("blob:"),
+          ),
         };
       })
       .filter((entry): entry is Message => Boolean(entry));
@@ -197,6 +210,7 @@ const getWelcomeMessage = (userName: string, caloriesRemaining: number) => {
 };
 
 const MAX_VISION_IMAGE_BYTES = Math.floor(2.8 * 1024 * 1024);
+const MAX_VISION_IMAGES = 4;
 const MAX_VISION_IMAGE_DIMENSION = 1600;
 
 const canvasToBlob = (canvas: HTMLCanvasElement, quality: number) =>
@@ -305,13 +319,13 @@ const TypingIndicator = () => (
 );
 
 const FoodLogBubble = ({
-  foodLogged,
+  foods,
   content,
 }: {
-  foodLogged: Message["foodLogged"];
+  foods: FoodLogged[];
   content: string;
 }) => {
-  if (!foodLogged) return null;
+  if (foods.length === 0) return null;
 
   const mealIcons: Record<string, string> = {
     breakfast: "🌅",
@@ -343,46 +357,51 @@ const FoodLogBubble = ({
             />
           </div>
 
-          <div className="bg-secondary/90 border border-primary/20 rounded-2xl p-3 sm:p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-lg">{mealIcons[foodLogged.mealType] || "🍽️"}</span>
-                <span className="text-xs text-muted-foreground capitalize truncate">
-                  {foodLogged.mealType.replace(/_/g, " ")}
+          {foods.map((foodLogged, index) => (
+            <div
+              key={`${foodLogged.name}-${index}`}
+              className="bg-secondary/90 border border-primary/20 rounded-2xl p-3 sm:p-4 shadow-sm"
+            >
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-lg">{mealIcons[foodLogged.mealType] || "🍽️"}</span>
+                  <span className="text-xs text-muted-foreground capitalize truncate">
+                    {foodLogged.mealType.replace(/_/g, " ")}
+                  </span>
+                </div>
+                <span className="text-[10px] font-medium bg-primary/15 text-primary px-2 py-1 rounded-full shrink-0">
+                  Added by AI
                 </span>
               </div>
-              <span className="text-[10px] font-medium bg-primary/15 text-primary px-2 py-1 rounded-full shrink-0">
-                Added by AI
-              </span>
-            </div>
 
-            <p className="font-semibold text-foreground text-sm sm:text-base capitalize mb-1 break-words">
-              {foodLogged.name}
-            </p>
-            <p className="text-xs text-muted-foreground mb-3">
-              {foodLogged.quantity}
-              {foodLogged.unit}
-            </p>
+              <p className="font-semibold text-foreground text-sm sm:text-base capitalize mb-1 break-words">
+                {foodLogged.name}
+              </p>
+              <p className="text-xs text-muted-foreground mb-3">
+                {foodLogged.quantity}
+                {foodLogged.unit}
+              </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="text-center bg-background/60 rounded-xl py-2 px-2">
-                <p className="text-sm font-bold text-primary">{foodLogged.calories}</p>
-                <p className="text-[10px] text-muted-foreground">cal</p>
-              </div>
-              <div className="text-center bg-background/60 rounded-xl py-2 px-2">
-                <p className="text-sm font-bold text-green-400">{foodLogged.protein}g</p>
-                <p className="text-[10px] text-muted-foreground">protein</p>
-              </div>
-              <div className="text-center bg-background/60 rounded-xl py-2 px-2">
-                <p className="text-sm font-bold text-yellow-400">{foodLogged.carbs}g</p>
-                <p className="text-[10px] text-muted-foreground">carbs</p>
-              </div>
-              <div className="text-center bg-background/60 rounded-xl py-2 px-2">
-                <p className="text-sm font-bold text-red-400">{foodLogged.fats}g</p>
-                <p className="text-[10px] text-muted-foreground">fats</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="text-center bg-background/60 rounded-xl py-2 px-2">
+                  <p className="text-sm font-bold text-primary">{foodLogged.calories}</p>
+                  <p className="text-[10px] text-muted-foreground">cal</p>
+                </div>
+                <div className="text-center bg-background/60 rounded-xl py-2 px-2">
+                  <p className="text-sm font-bold text-green-400">{foodLogged.protein}g</p>
+                  <p className="text-[10px] text-muted-foreground">protein</p>
+                </div>
+                <div className="text-center bg-background/60 rounded-xl py-2 px-2">
+                  <p className="text-sm font-bold text-yellow-400">{foodLogged.carbs}g</p>
+                  <p className="text-[10px] text-muted-foreground">carbs</p>
+                </div>
+                <div className="text-center bg-background/60 rounded-xl py-2 px-2">
+                  <p className="text-sm font-bold text-red-400">{foodLogged.fats}g</p>
+                  <p className="text-[10px] text-muted-foreground">fats</p>
+                </div>
               </div>
             </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>
@@ -395,15 +414,16 @@ export default function ChatBot() {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [isPreparingImage, setIsPreparingImage] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [preparingCount, setPreparingCount] = useState(0);
+  const isPreparingImage = preparingCount > 0;
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pendingImageUrlRef = useRef<string | null>(null);
+  const attachmentsRef = useRef<Attachment[]>([]);
+  const preparingCountRef = useRef(0);
   const messageImageUrlsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -462,7 +482,7 @@ export default function ChatBot() {
               content: getWelcomeMessage(userObj.name?.split(" ")[0] || "there", calorieTarget - caloriesConsumed),
               type: "text",
               foodLogged: null,
-              imageUrl: null,
+              imageUrls: [],
             },
           ]);
         }
@@ -483,7 +503,7 @@ export default function ChatBot() {
         JSON.stringify(
           messages.slice(-20).map((message) => ({
             ...message,
-            imageUrl: message.imageUrl?.startsWith("blob:") ? null : message.imageUrl ?? null,
+            imageUrls: (message.imageUrls ?? []).filter((url) => !url.startsWith("blob:")),
           })),
         ),
       );
@@ -503,10 +523,12 @@ export default function ChatBot() {
     }
   }, [input]);
 
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
   useEffect(() => () => {
-    if (pendingImageUrlRef.current?.startsWith("blob:")) {
-      URL.revokeObjectURL(pendingImageUrlRef.current);
-    }
+    attachmentsRef.current.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
 
     messageImageUrlsRef.current.forEach((url) => {
       if (url.startsWith("blob:")) {
@@ -516,20 +538,32 @@ export default function ChatBot() {
     messageImageUrlsRef.current.clear();
   }, []);
 
-  const clearSelectedImage = ({ preservePreview = false } = {}) => {
-    const pendingUrl = pendingImageUrlRef.current;
-    pendingImageUrlRef.current = null;
-
-    if (!preservePreview && pendingUrl?.startsWith("blob:")) {
-      URL.revokeObjectURL(pendingUrl);
-    }
-
-    setSelectedImage(null);
-    setImagePreview(null);
-
+  const resetFileInput = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  const clearAttachments = ({ preservePreviews = false } = {}) => {
+    if (!preservePreviews) {
+      attachmentsRef.current.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
+    }
+
+    attachmentsRef.current = [];
+    setAttachments([]);
+    resetFileInput();
+  };
+
+  const removeAttachment = (id: string) => {
+    const target = attachmentsRef.current.find((attachment) => attachment.id === id);
+    if (target) {
+      URL.revokeObjectURL(target.previewUrl);
+    }
+
+    const remaining = attachmentsRef.current.filter((attachment) => attachment.id !== id);
+    attachmentsRef.current = remaining;
+    setAttachments(remaining);
+    textareaRef.current?.focus();
   };
 
   const releaseChatImageUrls = () => {
@@ -541,74 +575,91 @@ export default function ChatBot() {
     messageImageUrlsRef.current.clear();
   };
 
-  const attachImageFile = async (file: File) => {
-    clearSelectedImage();
-    setIsPreparingImage(true);
+  const attachImageFiles = async (files: File[]) => {
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
 
-    try {
-      const preparedImage = await prepareVisionImage(file);
-      const previewUrl = URL.createObjectURL(preparedImage);
-
-      pendingImageUrlRef.current = previewUrl;
-      setSelectedImage(preparedImage);
-      setImagePreview(previewUrl);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to prepare image.");
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    } finally {
-      setIsPreparingImage(false);
+    const freeSlots = MAX_VISION_IMAGES - attachmentsRef.current.length - preparingCountRef.current;
+    if (freeSlots <= 0) {
+      toast.error(`You can attach up to ${MAX_VISION_IMAGES} images per message.`);
+      return;
     }
+
+    const accepted = imageFiles.slice(0, freeSlots);
+    if (imageFiles.length > freeSlots) {
+      toast.error(`Only ${MAX_VISION_IMAGES} images per message. Extra images were skipped.`);
+    }
+
+    preparingCountRef.current += accepted.length;
+    setPreparingCount(preparingCountRef.current);
+
+    await Promise.all(
+      accepted.map(async (file) => {
+        try {
+          const preparedImage = await prepareVisionImage(file);
+          const attachment: Attachment = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            file: preparedImage,
+            previewUrl: URL.createObjectURL(preparedImage),
+          };
+          attachmentsRef.current = [...attachmentsRef.current, attachment];
+          setAttachments(attachmentsRef.current);
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to prepare image.");
+        } finally {
+          preparingCountRef.current -= 1;
+          setPreparingCount(preparingCountRef.current);
+        }
+      }),
+    );
+
+    resetFileInput();
   };
 
   const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await attachImageFile(file);
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
+    await attachImageFiles(files);
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (isTyping || isPreparingImage) return;
+    if (isTyping) return;
 
-    const imageItem = Array.from(event.clipboardData?.items ?? []).find(
-      (item) => item.kind === "file" && item.type.startsWith("image/"),
-    );
-    const file = imageItem?.getAsFile();
+    const files = Array.from(event.clipboardData?.items ?? [])
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
 
     // Only intercept image pastes; plain text keeps the default behavior.
-    if (!file) return;
+    if (files.length === 0) return;
 
     event.preventDefault();
-    void attachImageFile(file).then(() => textareaRef.current?.focus());
+    void attachImageFiles(files).then(() => textareaRef.current?.focus());
   };
 
   const sendMessage = async (content: string) => {
     const trimmedContent = content.trim();
-    const attachedImage = selectedImage;
-    const attachedImagePreview = imagePreview;
+    const attachedImages = attachmentsRef.current;
+    const hasImages = attachedImages.length > 0;
 
-    if ((!trimmedContent && !attachedImage) || isTyping || isPreparingImage) return;
+    if ((!trimmedContent && !hasImages) || isTyping || isPreparingImage) return;
 
     const userId = getStoredUser()?.id;
     if (!userId) return;
 
     const userMessage: Message = {
       role: "user",
-      content: trimmedContent || "What do you see in this image?",
+      content: trimmedContent || (attachedImages.length > 1 ? "What do you see in these images?" : "What do you see in this image?"),
       type: "text",
       foodLogged: null,
-      imageUrl: attachedImagePreview,
+      imageUrls: attachedImages.map((attachment) => attachment.previewUrl),
     };
     const updatedMessages = [...messages, userMessage];
 
     setMessages(updatedMessages);
     setInput("");
-    if (attachedImagePreview) {
-      messageImageUrlsRef.current.add(attachedImagePreview);
-    }
-    clearSelectedImage({ preservePreview: Boolean(attachedImagePreview) });
+    attachedImages.forEach((attachment) => messageImageUrlsRef.current.add(attachment.previewUrl));
+    clearAttachments({ preservePreviews: true });
     setIsTyping(true);
 
     if (textareaRef.current) {
@@ -616,12 +667,12 @@ export default function ChatBot() {
     }
 
     try {
-      const res = attachedImage
+      const res = hasImages
         ? await api.post<ChatResponse>(
             "/api/chat/vision",
             (() => {
               const formData = new FormData();
-              formData.append("image", attachedImage);
+              attachedImages.forEach((attachment) => formData.append("images", attachment.file));
               formData.append("message", trimmedContent);
 
               if (userStats) {
@@ -651,22 +702,26 @@ export default function ChatBot() {
             })).slice(-10),
           });
 
-      const { reply, type, foodLogged, updatedIntake } = res.data;
+      const { reply, type, foodLogged, foodsLogged, updatedIntake } = res.data;
       const safeType: ChatMessageType = type === "FOOD_LOG" ? "FOOD_LOG" : "text";
+      const safeFoods = safeType === "FOOD_LOG"
+        ? (Array.isArray(foodsLogged) && foodsLogged.length > 0 ? foodsLogged : foodLogged ? [foodLogged] : [])
+        : [];
       const botMessage: Message = {
         role: "assistant",
         content: reply || "I'm currently resting my circuits. Ask again later!",
         type: safeType,
-        foodLogged: safeType === "FOOD_LOG" ? foodLogged ?? null : null,
-        imageUrl: null,
+        foodLogged: safeFoods[0] ?? null,
+        foodsLogged: safeFoods,
+        imageUrls: [],
       };
 
       setMessages((prev) => [...prev, botMessage]);
 
-      if (safeType === "FOOD_LOG" && foodLogged) {
+      if (safeType === "FOOD_LOG" && safeFoods.length > 0) {
         window.dispatchEvent(
           new CustomEvent("foodLoggedByAI", {
-            detail: { foodLogged, updatedIntake: updatedIntake ?? null },
+            detail: { foodLogged: safeFoods[0], foodsLogged: safeFoods, updatedIntake: updatedIntake ?? null },
           }),
         );
 
@@ -688,8 +743,8 @@ export default function ChatBot() {
       console.error(err);
       const errorMessage =
         (err as { response?: { data?: { message?: string } } }).response?.data?.message
-        || (attachedImage
-          ? "Sorry, I couldn't analyze that image. Please try a clearer or smaller photo."
+        || (hasImages
+          ? "Sorry, I couldn't analyze that. Please try clearer or smaller photos."
           : "Sorry, I had trouble with that. Please try again.");
 
       setMessages((prev) => [
@@ -699,7 +754,7 @@ export default function ChatBot() {
           content: errorMessage,
           type: "text",
           foodLogged: null,
-          imageUrl: null,
+          imageUrls: [],
         },
       ]);
     } finally {
@@ -715,7 +770,7 @@ export default function ChatBot() {
   };
 
   const handleClear = () => {
-    clearSelectedImage();
+    clearAttachments();
     releaseChatImageUrls();
 
     const defaultMessage: Message = {
@@ -723,7 +778,7 @@ export default function ChatBot() {
       content: "Chat history cleared. What's on your mind?",
       type: "text",
       foodLogged: null,
-      imageUrl: null,
+      imageUrls: [],
     };
 
     setMessages([defaultMessage]);
@@ -741,7 +796,7 @@ export default function ChatBot() {
     }),
     getFoodLogSuggestions(),
   );
-  const canSendMessage = Boolean(input.trim() || selectedImage);
+  const canSendMessage = Boolean(input.trim() || attachments.length > 0) && !isPreparingImage;
 
   return (
     <div ref={chatRef} className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-50 flex flex-col items-end pointer-events-none">
@@ -782,8 +837,11 @@ export default function ChatBot() {
           {messages.map((message, index) => (
             <div key={index}>
               {message.role === "assistant" ? (
-                message.type === "FOOD_LOG" && message.foodLogged ? (
-                  <FoodLogBubble foodLogged={message.foodLogged} content={message.content} />
+                message.type === "FOOD_LOG" && (message.foodsLogged?.length || message.foodLogged) ? (
+                  <FoodLogBubble
+                    foods={message.foodsLogged?.length ? message.foodsLogged : message.foodLogged ? [message.foodLogged] : []}
+                    content={message.content}
+                  />
                 ) : (
                   <div className="flex w-full justify-start">
                     <div className="flex gap-2.5 max-w-[90%] group">
@@ -821,12 +879,24 @@ export default function ChatBot() {
                     </div>
 
                     <div className="flex flex-col gap-2 items-end relative max-w-full">
-                      {message.imageUrl && (
+                      {message.imageUrls && message.imageUrls.length === 1 && (
                         <img
-                          src={message.imageUrl}
+                          src={message.imageUrls[0]}
                           alt="Uploaded by user"
                           className="max-w-[220px] sm:max-w-[240px] max-h-56 object-cover rounded-2xl border border-primary/25 shadow-sm"
                         />
+                      )}
+                      {message.imageUrls && message.imageUrls.length > 1 && (
+                        <div className="grid grid-cols-2 gap-1.5 w-[200px] sm:w-[220px]">
+                          {message.imageUrls.map((url, imageIndex) => (
+                            <img
+                              key={url}
+                              src={url}
+                              alt={`Uploaded by user ${imageIndex + 1}`}
+                              className="aspect-square w-full object-cover rounded-xl border border-primary/25 shadow-sm"
+                            />
+                          ))}
+                        </div>
                       )}
 
                       <div className="relative px-4 py-2.5 text-sm leading-relaxed overflow-hidden break-words whitespace-pre-wrap bg-primary/20 border border-primary/30 text-foreground rounded-2xl rounded-tr-sm">
@@ -862,53 +932,51 @@ export default function ChatBot() {
         )}
 
         <div className="p-3 relative bg-card">
-          {(imagePreview || isPreparingImage) && (
-            <div className="mb-3 rounded-2xl border border-border/60 bg-secondary/40 p-3">
-              {imagePreview ? (
-                <div className="flex items-center gap-3">
-                  <img
-                    src={imagePreview}
-                    alt="Selected for FuelBot"
-                    className="h-16 w-16 rounded-xl object-cover border border-border/60"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">Photo attached</p>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      FuelBot can estimate meals, read labels, or review progress photos.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => clearSelectedImage()}
-                    className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Preparing your image for FuelBot...</p>
-              )}
-            </div>
-          )}
-
           <form
             onSubmit={(event) => {
               event.preventDefault();
               void sendMessage(input);
             }}
-            className="flex gap-2 items-end bg-secondary/30 border border-border/50 rounded-2xl p-1 pr-1.5 focus-within:ring-1 focus-within:ring-green-400/50 focus-within:border-green-400/50 transition-all"
+            className="flex flex-col bg-secondary/30 border border-border/50 rounded-2xl p-1 pr-1.5 focus-within:ring-1 focus-within:ring-green-400/50 focus-within:border-green-400/50 transition-all"
           >
+            {(attachments.length > 0 || isPreparingImage) && (
+              <div className="flex flex-wrap gap-2 px-2 pt-2 pb-1">
+                {attachments.map((attachment) => (
+                  <div key={attachment.id} className="relative group/thumb h-14 w-14 shrink-0">
+                    <img
+                      src={attachment.previewUrl}
+                      alt="Attached for FuelBot"
+                      className="h-14 w-14 rounded-xl object-cover border border-border/60"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(attachment.id)}
+                      disabled={isTyping}
+                      aria-label="Remove image"
+                      className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-background border border-border shadow flex items-center justify-center text-muted-foreground hover:text-foreground opacity-100 sm:opacity-0 sm:group-hover/thumb:opacity-100 focus:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {Array.from({ length: preparingCount }).map((_, index) => (
+                  <div
+                    key={`preparing-${index}`}
+                    className="h-14 w-14 shrink-0 rounded-xl border border-border/60 bg-secondary/60 animate-pulse"
+                  />
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2 items-end">
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
+              multiple
               onChange={(event) => {
                 void handleImageSelect(event);
               }}
-              disabled={isTyping || isPreparingImage}
+              disabled={isTyping}
               className="hidden"
             />
             <Button
@@ -916,14 +984,15 @@ export default function ChatBot() {
               variant="ghost"
               size="icon"
               onClick={() => fileInputRef.current?.click()}
-              disabled={isTyping || isPreparingImage}
+              disabled={isTyping || attachments.length + preparingCount >= MAX_VISION_IMAGES}
+              title={`Attach photos (up to ${MAX_VISION_IMAGES})`}
               className="shrink-0 h-9 w-9 rounded-xl mb-0.5 text-muted-foreground hover:text-green-500 hover:bg-green-500/10"
             >
               <ImageIcon className="h-4 w-4" />
             </Button>
             <textarea
               ref={textareaRef}
-              disabled={isTyping || isPreparingImage}
+              disabled={isTyping}
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleKeyDown}
@@ -942,6 +1011,7 @@ export default function ChatBot() {
             >
               <Send className={`h-4 w-4 ${canSendMessage ? "translate-x-[1px] translate-y-[-1px]" : ""}`} />
             </Button>
+            </div>
           </form>
           {input.length > 200 && (
             <div className="absolute -top-5 right-4 text-[10px] text-muted-foreground font-medium">
