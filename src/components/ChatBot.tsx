@@ -623,6 +623,7 @@ export default function ChatBot() {
             })(),
             {
               headers: { "Content-Type": "multipart/form-data" },
+              timeout: 45000, // image analysis needs more time than the 15 s default
             },
           )
         : await api.post<ChatResponse>("/api/chat", {

@@ -11,9 +11,10 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 // Primary vision model, then fallback when the primary is overloaded or rate-limited.
 const GEMINI_VISION_MODELS = [
-  process.env.GEMINI_VISION_MODEL || "gemini-flash-latest",
-  process.env.GEMINI_VISION_FALLBACK_MODEL || "gemini-flash-lite-latest",
+  process.env.GEMINI_VISION_MODEL || "gemini-flash-lite-latest",
+  process.env.GEMINI_VISION_FALLBACK_MODEL || "gemini-flash-latest",
 ];
+const GEMINI_TIMEOUTS_MS = [15000, 20000];
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 const callGeminiVision = async (messages) => {
@@ -24,9 +25,9 @@ const callGeminiVision = async (messages) => {
   }
 
   let lastError;
-  for (const model of GEMINI_VISION_MODELS) {
+  for (const [index, model] of GEMINI_VISION_MODELS.entries()) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUTS_MS[index] || 15000);
     try {
       const response = await fetch(GEMINI_ENDPOINT, {
         method: "POST",
