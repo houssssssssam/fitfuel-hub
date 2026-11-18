@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -485,8 +486,10 @@ const Profile = () => {
         </Link>
       </p>
 
-      {isDirty && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] max-w-xl animate-in fade-in slide-in-from-bottom-4">
+      {/* Rendered at the document root: the page's fade-in animation leaves a transform
+          on its wrapper, which would pin this bar to the page instead of the screen. */}
+      {isDirty && createPortal(
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] w-[calc(100%-2rem)] max-w-xl animate-in fade-in slide-in-from-bottom-4 sm:bottom-6 max-sm:bottom-24">
           <div className="flex items-center gap-3 rounded-2xl border border-border bg-card/95 backdrop-blur px-4 py-3 shadow-2xl">
             <p className="flex-1 text-sm text-foreground">You have unsaved changes</p>
             <Button variant="ghost" size="sm" onClick={() => setForm(saved)} disabled={saving}>
@@ -497,7 +500,8 @@ const Profile = () => {
               Save changes
             </Button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       <ChangeEmailDialog
