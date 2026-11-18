@@ -30,6 +30,8 @@ const MACROS: { key: MacroKey; label: string; color: string; bar: string }[] = [
   { key: "fats", label: "Fats", color: "text-red-400", bar: "bg-red-500" },
 ];
 
+const MIN_EDITABLE_CALORIES = 800;
+
 const toInt = (value: string) => {
   const number = Math.round(Number(value));
   return Number.isFinite(number) && number >= 0 ? number : 0;
@@ -39,7 +41,7 @@ export default function MacroTargetsEditor({ targets, onChange, onRecalculate, c
   const percents = percentsFromGrams(targets);
   const macroCalories = caloriesFromGrams(targets);
   const mismatch = calorieMismatch(targets);
-  const isBalanced = targets.calories > 0 && Math.abs(mismatch) <= 0.02;
+  const isBalanced = targets.calories >= MIN_EDITABLE_CALORIES && Math.abs(mismatch) <= 0.02;
   const activePreset = MACRO_PRESETS.find(
     (preset) =>
       Math.abs(preset.percents.protein - percents.protein) <= 1
@@ -49,8 +51,9 @@ export default function MacroTargetsEditor({ targets, onChange, onRecalculate, c
 
   // Calories change: keep the same split, scale the grams.
   const setCalories = (calories: number) => {
-    // While the field is being retyped (empty or 0), keep the grams so the split isn't lost.
-    if (calories <= 0) {
+    // Typing "3000" passes through 3, 30 and 300. Below the 800 kcal minimum, keep the
+    // grams as they are so the split survives; scale them once the value is realistic.
+    if (calories < MIN_EDITABLE_CALORIES) {
       onChange({ ...targets, calories });
       return;
     }
@@ -215,8 +218,8 @@ export default function MacroTargetsEditor({ targets, onChange, onRecalculate, c
         <span>
           {targets.protein} g P × 4 + {targets.carbs} g C × 4 + {targets.fats} g F × 9 ={" "}
           <strong>{macroCalories.toLocaleString()} kcal</strong>
-          {targets.calories <= 0
-            ? " — enter your daily calories"
+          {targets.calories < MIN_EDITABLE_CALORIES
+            ? ` — daily calories must be at least ${MIN_EDITABLE_CALORIES} kcal`
             : isBalanced
               ? " — matches your calorie target"
               : ` — ${Math.abs(Math.round(mismatch * 100))}% ${mismatch > 0 ? "above" : "below"} your ${targets.calories.toLocaleString()} kcal target`}
